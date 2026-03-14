@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { getTranslations } from "next-intl/server";
 
 export default async function Home() {
@@ -7,9 +8,12 @@ export default async function Home() {
     <div className="min-h-screen bg-gradient-to-b from-[#0f1c2e] to-[#1a2d47] text-white">
       <nav className="flex items-center justify-between px-8 py-4 border-b border-white/10">
         <span className="text-lg font-bold">{t("common.appName")}</span>
-        <button className="rounded-lg bg-white/10 px-5 py-2 text-sm font-medium transition hover:bg-white/20">
+        <Link
+          href="/login"
+          className="rounded-lg bg-white/10 px-5 py-2 text-sm font-medium transition hover:bg-white/20"
+        >
           {t("landing.login")}
-        </button>
+        </Link>
       </nav>
 
       <main className="flex flex-col items-center justify-center px-4 pt-32 pb-20 text-center">
@@ -24,9 +28,12 @@ export default async function Home() {
           <button className="rounded-xl bg-blue-600 px-8 py-3 text-base font-semibold transition hover:bg-blue-500">
             {t("landing.trySystem")}
           </button>
-          <button className="rounded-xl border border-white/20 bg-white/5 px-8 py-3 text-base font-semibold transition hover:bg-white/10">
+          <Link
+            href="/login"
+            className="rounded-xl border border-white/20 bg-white/5 px-8 py-3 text-base font-semibold transition hover:bg-white/10"
+          >
             {t("landing.login")}
-          </button>
+          </Link>
         </div>
       </main>
 
