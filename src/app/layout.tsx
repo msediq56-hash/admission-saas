@@ -1,11 +1,8 @@
 import type { Metadata } from "next";
-import { Noto_Kufi_Arabic, Geist } from "next/font/google";
+import { Noto_Kufi_Arabic } from "next/font/google";
 import { NextIntlClientProvider } from "next-intl";
 import { getLocale, getMessages } from "next-intl/server";
 import "./globals.css";
-import { cn } from "@/lib/utils";
-
-const geist = Geist({subsets:['latin'],variable:'--font-sans'});
 
 const notoKufiArabic = Noto_Kufi_Arabic({
   subsets: ["arabic"],
@@ -27,7 +24,7 @@ export default async function RootLayout({
   const messages = await getMessages();
 
   return (
-    <html lang={locale} dir="rtl" className={cn("font-sans", geist.variable)}>
+    <html lang={locale} dir="rtl">
       <body className={`${notoKufiArabic.variable} font-sans antialiased`}>
         <NextIntlClientProvider messages={messages}>
           {children}
