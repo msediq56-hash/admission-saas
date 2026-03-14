@@ -5,13 +5,9 @@ export function createSupabaseBrowserClient() {
   const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
   if (!supabaseUrl || !supabaseAnonKey) {
-    console.warn(
-      "Missing NEXT_PUBLIC_SUPABASE_URL or NEXT_PUBLIC_SUPABASE_ANON_KEY — Supabase client will not work"
-    );
-    // Return a dummy client that won't crash; calls will fail gracefully
-    return createBrowserClient(
-      "https://placeholder.supabase.co",
-      "placeholder-key"
+    throw new Error(
+      "Missing NEXT_PUBLIC_SUPABASE_URL or NEXT_PUBLIC_SUPABASE_ANON_KEY. " +
+        "Check that .env.local exists and Next.js is loading it."
     );
   }
 
