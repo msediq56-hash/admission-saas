@@ -298,6 +298,100 @@ export function evaluateProfileAgainstProgram(
 }
 
 // -----------------------------------------------------------
+// Category hierarchy: foundation(0) < bachelor(1) < master(2) < phd(3)
+// -----------------------------------------------------------
+const CATEGORY_RANK: Record<string, number> = {
+  foundation: 0,
+  bachelor: 1,
+  master: 2,
+  phd: 3,
+};
+
+function getCategoryRank(category: string): number {
+  return CATEGORY_RANK[category] ?? -1;
+}
+
+const CATEGORY_LABELS: Record<string, string> = {
+  foundation: "الفاونديشن",
+  bachelor: "البكالوريوس",
+  master: "الماجستير",
+  phd: "الدكتوراة",
+};
+
+// -----------------------------------------------------------
+// Smart cross-program suggestions within the same university
+// -----------------------------------------------------------
+function addCrossProgramSuggestions(results: ComparisonResult[]): void {
+  // Group results by university
+  const byUni = new Map<string, ComparisonResult[]>();
+  for (const r of results) {
+    const arr = byUni.get(r.universityName) || [];
+    arr.push(r);
+    byUni.set(r.universityName, arr);
+  }
+
+  for (const [, uniResults] of byUni) {
+    const eligible = uniResults.filter(
+      (r) => r.status === "positive" || r.status === "conditional"
+    );
+    const negative = uniResults.filter((r) => r.status === "negative");
+
+    // Build sets of eligible categories for quick lookup
+    const eligibleByCategory = new Map<number, ComparisonResult[]>();
+    for (const r of eligible) {
+      const rank = getCategoryRank(r.category);
+      if (rank < 0) continue;
+      const arr = eligibleByCategory.get(rank) || [];
+      arr.push(r);
+      eligibleByCategory.set(rank, arr);
+    }
+
+    // 1. UPGRADE suggestions: eligible for lower tier → also eligible for higher?
+    for (const r of eligible) {
+      const rank = getCategoryRank(r.category);
+      if (rank < 0) continue;
+
+      // Check if eligible for any HIGHER tier in the same university
+      for (const [higherRank, higherResults] of eligibleByCategory) {
+        if (higherRank > rank && higherResults.length > 0) {
+          const higherLabel = CATEGORY_LABELS[
+            Object.keys(CATEGORY_RANK).find(
+              (k) => CATEGORY_RANK[k] === higherRank
+            )!
+          ];
+          if (higherLabel) {
+            r.notes.push(
+              `💡 الطالب مؤهل لـ${higherLabel} المباشر — يُنصح بمراجعة المسار`
+            );
+          }
+          break; // Only suggest the next higher tier
+        }
+      }
+    }
+
+    // 2. DOWNGRADE suggestions: negative for a tier → suggest lower tier
+    for (const r of negative) {
+      const rank = getCategoryRank(r.category);
+      if (rank < 0) continue;
+
+      // Find eligible programs at a LOWER tier in the same university
+      // Search from rank-1 down to 0
+      for (let lowerRank = rank - 1; lowerRank >= 0; lowerRank--) {
+        const lowerResults = eligibleByCategory.get(lowerRank);
+        if (lowerResults && lowerResults.length > 0) {
+          // Suggest up to 2 lower-tier programs
+          const suggestions = lowerResults.slice(0, 2);
+          for (const alt of suggestions) {
+            r.notes.push(`💡 جرّب: ${alt.programName}`);
+          }
+          break; // Only suggest the nearest lower tier
+        }
+      }
+    }
+  }
+}
+
+// -----------------------------------------------------------
 // Compare profile against ALL programs, then add suggestions
 // -----------------------------------------------------------
 export function compareAllPrograms(
@@ -308,32 +402,8 @@ export function compareAllPrograms(
     evaluateProfileAgainstProgram(profile, entry)
   );
 
-  // For negative results, suggest alternatives from the same university
-  // Group positive/conditional results by university
-  const eligibleByUni = new Map<string, ComparisonResult[]>();
-  for (const r of results) {
-    if (r.status === "positive" || r.status === "conditional") {
-      const arr = eligibleByUni.get(r.universityName) || [];
-      arr.push(r);
-      eligibleByUni.set(r.universityName, arr);
-    }
-  }
-
-  for (const r of results) {
-    if (r.status === "negative") {
-      const alternatives = eligibleByUni.get(r.universityName);
-      if (alternatives && alternatives.length > 0) {
-        // Pick up to 2 suggestions, prefer different program from the negative one
-        const suggestions = alternatives
-          .filter((alt) => alt.programId !== r.programId)
-          .slice(0, 2)
-          .map((alt) => alt.programName);
-        for (const name of suggestions) {
-          r.notes.push(`💡 جرّب: ${name}`);
-        }
-      }
-    }
-  }
+  // Add smart cross-program suggestions
+  addCrossProgramSuggestions(results);
 
   // Sort: positive first, then conditional, then negative
   const order: Record<string, number> = {
