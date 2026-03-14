@@ -214,77 +214,25 @@ export default function EvaluatePage() {
 
   function handleSelectCountry(country: string) {
     setSelectedCountry(country);
-    // Check if only one type for this country — skip type step
-    const types = [
-      ...new Set(
-        allUniversities
-          .filter((u) => u.country === country)
-          .map((u) => u.type)
-      ),
-    ];
-    if (types.length === 1) {
-      setSelectedType(types[0]);
-      // Check if only one university for this country+type
-      const unis = allUniversities.filter(
-        (u) => u.country === country && u.type === types[0]
-      );
-      if (unis.length === 1) {
-        handleSelectUniversity(unis[0]);
-      } else {
-        setStep("university");
-      }
-    } else {
-      setStep("type");
-    }
+    setStep("type");
   }
 
   function handleSelectType(type: string) {
     setSelectedType(type);
-    const unis = allUniversities.filter(
-      (u) => u.country === selectedCountry && u.type === type
-    );
-    if (unis.length === 1) {
-      handleSelectUniversity(unis[0]);
-    } else {
-      setStep("university");
-    }
+    setStep("university");
   }
 
   async function handleSelectUniversity(uni: University) {
     setSelectedUniversity(uni);
     setSelectedCountry(uni.country);
     setSelectedType(uni.type);
-    const fetchedPrograms = await fetchPrograms(uni.id);
-
-    // Get unique categories
-    const cats = [...new Set(fetchedPrograms.map((p: Program) => p.category))];
-    if (cats.length === 1) {
-      // Only one category — skip category selection
-      const progsInCat = fetchedPrograms.filter(
-        (p: Program) => p.category === cats[0]
-      );
-      setSelectedCategory(cats[0]);
-      if (progsInCat.length === 1) {
-        // Only one program — select it directly
-        setSelectedProgram(progsInCat[0]);
-        setStep("questions");
-        fetchAndBuildQuestions(progsInCat[0].id);
-      } else {
-        setStep("program");
-      }
-    } else {
-      setStep("category");
-    }
+    await fetchPrograms(uni.id);
+    setStep("category");
   }
 
   function handleSelectCategory(category: string) {
     setSelectedCategory(category);
-    const progsInCat = programs.filter((p) => p.category === category);
-    if (progsInCat.length === 1) {
-      handleSelectProgram(progsInCat[0]);
-    } else {
-      setStep("program");
-    }
+    setStep("program");
   }
 
   function handleSelectProgram(prog: Program) {
@@ -340,57 +288,24 @@ export default function EvaluatePage() {
         setStep("country");
         break;
       case "university":
-        // Go back to type if multiple types, else back to country
-        if (typesForCountry.length > 1) {
-          setSelectedType(null);
-          setStep("type");
-        } else {
-          setSelectedCountry(null);
-          setSelectedType(null);
-          setStep("country");
-        }
+        setSelectedType(null);
+        setStep("type");
         break;
       case "category":
         setSelectedUniversity(null);
         setSelectedCategory(null);
-        // Go back to university if multiple unis, else further back
-        if (universitiesForSelection.length > 1) {
-          setStep("university");
-        } else if (typesForCountry.length > 1) {
-          setSelectedType(null);
-          setStep("type");
-        } else {
-          setSelectedCountry(null);
-          setSelectedType(null);
-          setStep("country");
-        }
+        setStep("university");
         break;
       case "program":
-        if (categoriesForUniversity.length > 1) {
-          setSelectedCategory(null);
-          setStep("category");
-        } else {
-          setSelectedUniversity(null);
-          setSelectedCategory(null);
-          setStep("university");
-        }
+        setSelectedCategory(null);
+        setStep("category");
         break;
       case "questions":
         if (currentQuestionIndex > 0) {
           setCurrentQuestionIndex(currentQuestionIndex - 1);
         } else {
-          // Back to program selection
           setSelectedProgram(null);
-          if (programsForCategory.length > 1) {
-            setStep("program");
-          } else if (categoriesForUniversity.length > 1) {
-            setSelectedCategory(null);
-            setStep("category");
-          } else {
-            setSelectedUniversity(null);
-            setSelectedCategory(null);
-            setStep("university");
-          }
+          setStep("program");
         }
         break;
       case "result":
@@ -400,7 +315,6 @@ export default function EvaluatePage() {
             blockedAtQuestionIndex !== null
               ? blockedAtQuestionIndex
               : questions.length - 1;
-          // Remove the answer for the question we're going back to
           const qId = questions[goBackTo].id;
           setAnswers(answers.filter((a) => a.questionId !== qId));
           setCurrentQuestionIndex(goBackTo);
