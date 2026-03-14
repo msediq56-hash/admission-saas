@@ -20,12 +20,12 @@ export function Sidebar({ user }: { user: AuthUser }) {
   const navItems: NavItem[] = [
     { href: "/evaluate", label: t("sidebar.evaluate") },
     { href: "/compare", label: t("sidebar.compare") },
+    { href: "/universities", label: t("sidebar.universities") },
   ];
 
   if (canManageUsers(user.role)) {
     navItems.push(
       { href: "/dashboard", label: t("sidebar.dashboard") },
-      { href: "/universities", label: t("sidebar.universities") },
     );
   }
 
