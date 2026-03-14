@@ -128,9 +128,10 @@ export default function ComparePage() {
 
     const uniMap = new Map(universities.map((u) => [u.id, u]));
 
+    // Fetch ALL programs with certificate_types join (no category filter yet)
     const { data: programs } = await supabase
       .from("programs")
-      .select("id, name, category, university_id")
+      .select("id, name, category, university_id, certificate_types(slug)")
       .in(
         "university_id",
         universities.map((u) => u.id)
@@ -143,26 +144,9 @@ export default function ComparePage() {
       return;
     }
 
-    // Filter by selected categories (with medical split from bachelor)
-    const filteredPrograms = programs.filter((p) => {
-      const isMedical = isMedicalProgram(p.name);
-      if (isMedical) {
-        return selectedCategories.medical;
-      }
-      // Non-medical: use DB category
-      const dbCat = p.category as FilterKey;
-      return selectedCategories[dbCat] ?? false;
-    });
+    const programIds = programs.map((p) => p.id);
 
-    if (filteredPrograms.length === 0) {
-      setResults([]);
-      setLoading(false);
-      return;
-    }
-
-    const programIds = filteredPrograms.map((p) => p.id);
-
-    // Fetch requirements, custom_requirements, scholarship_tiers
+    // Fetch requirements, custom_requirements, scholarship_tiers for ALL programs
     const [reqRes, customRes, tierRes] = await Promise.all([
       supabase.from("requirements").select("*").in("program_id", programIds),
       supabase
@@ -200,9 +184,13 @@ export default function ComparePage() {
       tierMap.set(st.program_id, arr);
     }
 
-    // Build program entries
-    const entries: ProgramEntry[] = filteredPrograms.map((p) => {
+    // Build entries for ALL programs (including certificateTypeSlug)
+    const entries: ProgramEntry[] = programs.map((p) => {
       const uni = uniMap.get(p.university_id)!;
+      const certTypes = p.certificate_types as unknown as { slug: string } | { slug: string }[] | null;
+      const certSlug = Array.isArray(certTypes)
+        ? certTypes[0]?.slug || null
+        : certTypes?.slug || null;
       return {
         programId: p.id,
         programName: p.name,
@@ -210,14 +198,25 @@ export default function ComparePage() {
         country: uni.country,
         universityType: uni.type,
         category: p.category,
+        certificateTypeSlug: certSlug,
         requirements: reqMap.get(p.id) || ({} as Requirement),
         customRequirements: customMap.get(p.id) || [],
         scholarshipTiers: tierMap.get(p.id) || [],
       };
     });
 
-    const compared = compareAllPrograms(profile, entries);
-    setResults(compared);
+    // Evaluate ALL programs first (so cross-program suggestions work)
+    const allResults = compareAllPrograms(profile, entries);
+
+    // Filter results AFTER comparison based on selected categories
+    const filtered = allResults.filter((r) => {
+      const isMedical = isMedicalProgram(r.programName);
+      if (isMedical) return selectedCategories.medical;
+      const dbCat = r.category as FilterKey;
+      return selectedCategories[dbCat] ?? false;
+    });
+
+    setResults(filtered);
     setLoading(false);
   }
 
