@@ -78,6 +78,7 @@
     "language": "لغة"
   },
   "evaluation": {
+    "title": "تقييم الطلاب",
     "evaluate": "تقييم",
     "compare": "مقارنة",
     "eligible": "مؤهل",
@@ -88,6 +89,22 @@
     "studentInfo": "معلومات الطالب",
     "gpa": "المعدل التراكمي",
     "major": "التخصص",
-    "university": "الجامعة"
+    "university": "الجامعة",
+    "selectUniversity": "اختر الجامعة",
+    "selectProgram": "اختر البرنامج",
+    "answerQuestions": "أجب على الأسئلة",
+    "yes": "نعم",
+    "no": "لا",
+    "positive": "مؤهل",
+    "negative": "غير مؤهل",
+    "questionOf": "سؤال {current} من {total}",
+    "newEvaluation": "تقييم جديد",
+    "back": "رجوع",
+    "conditions": "الشروط",
+    "notes": "ملاحظات",
+    "scholarship": "المنحة",
+    "step": "الخطوة",
+    "noPrograms": "لا توجد برامج لهذه الجامعة",
+    "loadingProgram": "جاري تحميل بيانات البرنامج..."
   }
 }
