@@ -51,10 +51,47 @@ function isBritishProgram(programName: string): boolean {
 }
 
 // -----------------------------------------------------------
+// Check if a program is an "Arabic certificate" program
+// (explicitly marked with عربية, or any non-British program)
+// -----------------------------------------------------------
+function isArabicOnlyProgram(programName: string): boolean {
+  return programName.includes("عربية");
+}
+
+// -----------------------------------------------------------
+// Check if a program is a foundation program
+// -----------------------------------------------------------
+function isFoundationProgram(category: string, programName: string): boolean {
+  return category === "foundation" || programName.includes("تأسيسية");
+}
+
+// -----------------------------------------------------------
 // Check if a program is a medical program
 // -----------------------------------------------------------
 export function isMedicalProgram(programName: string): boolean {
   return programName.includes("طبيات") || programName.includes("صيدلة");
+}
+
+// -----------------------------------------------------------
+// Build a negative result helper
+// -----------------------------------------------------------
+function makeNegative(
+  entry: ProgramEntry,
+  reason: string,
+  notes: string[] = []
+): ComparisonResult {
+  return {
+    programId: entry.programId,
+    programName: entry.programName,
+    universityName: entry.universityName,
+    country: entry.country,
+    universityType: entry.universityType,
+    category: entry.category,
+    status: "negative",
+    reason,
+    notes,
+    scholarshipInfo: null,
+  };
 }
 
 // -----------------------------------------------------------
@@ -70,35 +107,41 @@ export function evaluateProfileAgainstProgram(
   const notes: string[] = [];
   let scholarshipInfo: string | null = null;
 
-  // Certificate type filter: british cert → only british programs, arabic → all non-british
   const programIsBritish = isBritishProgram(entry.programName);
-  if (profile.certificateType === "british" && !programIsBritish) {
-    return {
-      programId: entry.programId,
-      programName: entry.programName,
-      universityName: entry.universityName,
-      country: entry.country,
-      universityType: entry.universityType,
-      category: entry.category,
-      status: "negative",
-      reason: "هذا المسار مخصص لحاملي الشهادات العربية",
-      notes: [],
-      scholarshipInfo: null,
-    };
-  }
+  const programIsArabicOnly = isArabicOnlyProgram(entry.programName);
+  const isFoundation = isFoundationProgram(entry.category, entry.programName);
+
+  // --- Certificate type filtering ---
+  // Arabic student → skip British-only programs
   if (profile.certificateType === "arabic" && programIsBritish) {
-    return {
-      programId: entry.programId,
-      programName: entry.programName,
-      universityName: entry.universityName,
-      country: entry.country,
-      universityType: entry.universityType,
-      category: entry.category,
-      status: "negative",
-      reason: "هذا المسار مخصص لحاملي الشهادة البريطانية",
-      notes: [],
-      scholarshipInfo: null,
-    };
+    return makeNegative(entry, "هذا المسار مخصص لحاملي الشهادة البريطانية");
+  }
+  // British student → skip Arabic-only programs
+  if (profile.certificateType === "british" && programIsArabicOnly) {
+    return makeNegative(entry, "هذا المسار مخصص لحاملي الشهادات العربية");
+  }
+  // British student → skip non-British programs (those without بريطانية and not generic)
+  if (profile.certificateType === "british" && !programIsBritish) {
+    return makeNegative(entry, "هذا المسار مخصص لحاملي الشهادات العربية");
+  }
+
+  // --- A Level checks for British certificate programs ---
+  if (profile.certificateType === "british" && programIsBritish) {
+    const aCount = profile.aLevelCount ?? 0;
+    const aCCount = profile.aLevelCCount ?? 0;
+
+    // All British programs require 3 A Levels
+    if (aCount < 3) {
+      return makeNegative(entry, "غير مؤهل — يحتاج 3 مواد A Level");
+    }
+
+    // For bachelor (non-foundation): require 3 C+ grades
+    if (!isFoundation) {
+      if (aCCount < 3) {
+        negatives.push("درجات أقل من C — جرّب السنة التأسيسية");
+      }
+    }
+    // Foundation: 3 A Levels is enough, no C grade requirement
   }
 
   // 1. High school
@@ -116,35 +159,41 @@ export function evaluateProfileAgainstProgram(
     negatives.push("لا يملك شهادة بكالوريوس");
   }
 
-  // 4 & 5. IELTS
+  // 4 & 5. IELTS — fixed: "interview" effect is NOT blocking
   if (req.requires_ielts) {
     const effect = req.ielts_effect || "";
-    if (profile.ielts !== null) {
-      // Has IELTS score — check if it meets minimum
-      if (
-        effect === "blocks_if_below" &&
-        req.ielts_min &&
-        profile.ielts < req.ielts_min
-      ) {
-        negatives.push(`يحتاج IELTS بدرجة ${req.ielts_min} أو أعلى (الحالي: ${profile.ielts})`);
-      } else if (
-        effect.startsWith("conditional") &&
-        req.ielts_min &&
-        profile.ielts < req.ielts_min
-      ) {
+
+    if (effect.startsWith("interview")) {
+      // Interview-based: NEVER blocks, only adds notes
+      if (profile.ielts === null) {
+        notes.push("سيتم ترتيب مقابلة لتقييم اللغة");
+      } else if (req.ielts_min && profile.ielts < req.ielts_min) {
+        notes.push(
+          "يرجى عدم رفع شهادة اللغة مع ملف الطالب — سيتم ترتيب مقابلة لتقييم اللغة"
+        );
+      }
+      // If IELTS >= min, no note needed
+    } else if (effect === "blocks_if_below") {
+      if (profile.ielts !== null) {
+        if (req.ielts_min && profile.ielts < req.ielts_min) {
+          negatives.push(
+            `يحتاج IELTS بدرجة ${req.ielts_min} أو أعلى (الحالي: ${profile.ielts})`
+          );
+        }
+      } else {
+        negatives.push("لا يملك شهادة IELTS");
+      }
+    } else if (effect.startsWith("conditional")) {
+      if (profile.ielts !== null) {
+        if (req.ielts_min && profile.ielts < req.ielts_min) {
+          conditions.push(effect.split(": ")[1] || effect);
+        }
+      } else {
         conditions.push(effect.split(": ")[1] || effect);
       }
     } else {
-      // No IELTS
-      if (effect === "blocks_if_below") {
-        negatives.push("لا يملك شهادة IELTS");
-      } else if (effect.startsWith("interview")) {
-        conditions.push(
-          effect.split(": ")[1] || "سيتم ترتيب مقابلة لتقييم اللغة"
-        );
-      } else if (effect.startsWith("conditional")) {
-        conditions.push(effect.split(": ")[1] || effect);
-      } else {
+      // Unknown effect — treat as conditional
+      if (profile.ielts === null || (req.ielts_min && profile.ielts < req.ielts_min)) {
         conditions.push(`يحتاج IELTS بدرجة ${req.ielts_min} أو أعلى`);
       }
     }
@@ -259,7 +308,7 @@ export function compareAllPrograms(
     evaluateProfileAgainstProgram(profile, entry)
   );
 
-  // ISSUE 2: For negative results, suggest alternatives from the same university
+  // For negative results, suggest alternatives from the same university
   // Group positive/conditional results by university
   const eligibleByUni = new Map<string, ComparisonResult[]>();
   for (const r of results) {
@@ -274,8 +323,9 @@ export function compareAllPrograms(
     if (r.status === "negative") {
       const alternatives = eligibleByUni.get(r.universityName);
       if (alternatives && alternatives.length > 0) {
-        // Pick up to 2 suggestions
+        // Pick up to 2 suggestions, prefer different program from the negative one
         const suggestions = alternatives
+          .filter((alt) => alt.programId !== r.programId)
           .slice(0, 2)
           .map((alt) => alt.programName);
         for (const name of suggestions) {
