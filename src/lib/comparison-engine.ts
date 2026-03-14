@@ -38,31 +38,10 @@ export interface ProgramEntry {
   country: string;
   universityType: string;
   category: string;
+  certificateTypeSlug: string | null;
   requirements: Requirement;
   customRequirements: CustomRequirement[];
   scholarshipTiers: ScholarshipTier[];
-}
-
-// -----------------------------------------------------------
-// Check if a program is a "British certificate" program
-// -----------------------------------------------------------
-function isBritishProgram(programName: string): boolean {
-  return programName.includes("بريطانية");
-}
-
-// -----------------------------------------------------------
-// Check if a program is an "Arabic certificate" program
-// (explicitly marked with عربية, or any non-British program)
-// -----------------------------------------------------------
-function isArabicOnlyProgram(programName: string): boolean {
-  return programName.includes("عربية");
-}
-
-// -----------------------------------------------------------
-// Check if a program is a foundation program
-// -----------------------------------------------------------
-function isFoundationProgram(category: string, programName: string): boolean {
-  return category === "foundation" || programName.includes("تأسيسية");
 }
 
 // -----------------------------------------------------------
@@ -107,26 +86,30 @@ export function evaluateProfileAgainstProgram(
   const notes: string[] = [];
   let scholarshipInfo: string | null = null;
 
-  const programIsBritish = isBritishProgram(entry.programName);
-  const programIsArabicOnly = isArabicOnlyProgram(entry.programName);
-  const isFoundation = isFoundationProgram(entry.category, entry.programName);
+  const slug = entry.certificateTypeSlug;
+  const isFoundation = entry.category === "foundation";
 
   // --- Certificate type filtering ---
-  // Arabic student → skip British-only programs
-  if (profile.certificateType === "arabic" && programIsBritish) {
+  // Arabic student → skip British-slug programs
+  if (profile.certificateType === "arabic" && slug === "british") {
     return makeNegative(entry, "هذا المسار مخصص لحاملي الشهادة البريطانية");
   }
-  // British student → skip Arabic-only programs
-  if (profile.certificateType === "british" && programIsArabicOnly) {
+  // British student → skip Arabic-slug programs
+  if (profile.certificateType === "british" && slug === "arabic") {
     return makeNegative(entry, "هذا المسار مخصص لحاملي الشهادات العربية");
   }
-  // British student → skip non-British programs (those without بريطانية and not generic)
-  if (profile.certificateType === "british" && !programIsBritish) {
-    return makeNegative(entry, "هذا المسار مخصص لحاملي الشهادات العربية");
+  // British student can see: british-slug programs + generic programs (null slug)
+  // Skip any other specific certificate type
+  if (
+    profile.certificateType === "british" &&
+    slug !== "british" &&
+    slug !== null
+  ) {
+    return makeNegative(entry, "هذا المسار مخصص لنوع شهادة آخر");
   }
 
   // --- A Level checks for British certificate programs ---
-  if (profile.certificateType === "british" && programIsBritish) {
+  if (profile.certificateType === "british" && slug === "british") {
     const aCount = profile.aLevelCount ?? 0;
     const aCCount = profile.aLevelCCount ?? 0;
 
