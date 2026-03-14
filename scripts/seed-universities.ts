@@ -31,6 +31,30 @@ async function main() {
   const tid = tenant.id;
   console.log(`Tenant ID: ${tid}\n`);
 
+  // 2. Get certificate type IDs
+  console.log("Fetching certificate types...");
+  const { data: certTypes, error: certErr } = await supabase
+    .from("certificate_types")
+    .select("id, slug")
+    .eq("is_system", true);
+
+  if (certErr || !certTypes) {
+    console.error("Certificate types not found:", certErr?.message);
+    console.error("Did you run migration 003_certificate_types.sql?");
+    process.exit(1);
+  }
+
+  const certTypeMap = new Map(certTypes.map((ct) => [ct.slug, ct.id]));
+  const arabicCertId = certTypeMap.get("arabic");
+  const britishCertId = certTypeMap.get("british");
+
+  if (!arabicCertId || !britishCertId) {
+    console.error("Missing arabic or british certificate types");
+    process.exit(1);
+  }
+  console.log(`Arabic cert ID: ${arabicCertId}`);
+  console.log(`British cert ID: ${britishCertId}\n`);
+
   // Helper to insert university
   async function insertUniversity(
     name: string,
@@ -60,6 +84,7 @@ async function main() {
       category: string;
       complexity: string;
       sortOrder: number;
+      certificateTypeId?: string;
       requirements: Record<string, unknown>;
       customRequirements?: Array<{
         question_text: string;
@@ -89,6 +114,7 @@ async function main() {
         category: program.category,
         complexity_level: program.complexity,
         sort_order: program.sortOrder,
+        certificate_type_id: program.certificateTypeId || null,
       })
       .select("id")
       .single();
@@ -165,6 +191,7 @@ async function main() {
     category: "bachelor",
     complexity: "simple",
     sortOrder: 1,
+    certificateTypeId: arabicCertId,
     requirements: {
       requires_hs: true,
       requires_sat: true,
@@ -225,6 +252,7 @@ async function main() {
     category: "bachelor",
     complexity: "complex",
     sortOrder: 2,
+    certificateTypeId: britishCertId,
     requirements: {
       requires_hs: true,
       requires_sat: true,
@@ -236,6 +264,9 @@ async function main() {
       ielts_effect: "interview: سيتم ترتيب مقابلة لتقييم اللغة",
       ielts_alternatives: { duolingo: 110 },
       result_notes: "الرسوم: 20,000 يورو/سنة",
+      a_level_subjects_min: 3,
+      a_level_min_grade: "C",
+      a_level_requires_core: true,
     },
     customRequirements: [
       {
@@ -271,6 +302,7 @@ async function main() {
     category: "foundation",
     complexity: "simple",
     sortOrder: 3,
+    certificateTypeId: arabicCertId,
     requirements: {
       requires_hs: true,
       result_notes: "الرسوم: 13,000 يورو",
@@ -283,6 +315,7 @@ async function main() {
     category: "foundation",
     complexity: "simple",
     sortOrder: 4,
+    certificateTypeId: britishCertId,
     requirements: {
       requires_hs: true,
       result_notes: "الرسوم: 13,000 يورو",
@@ -332,6 +365,7 @@ async function main() {
     category: "foundation",
     complexity: "hybrid",
     sortOrder: 1,
+    certificateTypeId: arabicCertId,
     requirements: {
       requires_hs: true,
       requires_ielts: true,
@@ -365,6 +399,7 @@ async function main() {
     category: "foundation",
     complexity: "simple",
     sortOrder: 2,
+    certificateTypeId: arabicCertId,
     requirements: {
       requires_hs: true,
       requires_ielts: true,
@@ -380,6 +415,7 @@ async function main() {
     category: "foundation",
     complexity: "simple",
     sortOrder: 3,
+    certificateTypeId: arabicCertId,
     requirements: {
       requires_hs: true,
       requires_ielts: true,
@@ -395,6 +431,7 @@ async function main() {
     category: "foundation",
     complexity: "simple",
     sortOrder: 4,
+    certificateTypeId: arabicCertId,
     requirements: {
       requires_hs: true,
       requires_ielts: true,
@@ -410,6 +447,7 @@ async function main() {
     category: "foundation",
     complexity: "simple",
     sortOrder: 5,
+    certificateTypeId: arabicCertId,
     requirements: {
       requires_hs: false,
       requires_bachelor: true,
@@ -427,6 +465,7 @@ async function main() {
     category: "bachelor",
     complexity: "simple",
     sortOrder: 6,
+    certificateTypeId: arabicCertId,
     requirements: {
       requires_hs: true,
       requires_ielts: true,
@@ -443,6 +482,7 @@ async function main() {
     category: "master",
     complexity: "simple",
     sortOrder: 7,
+    certificateTypeId: arabicCertId,
     requirements: {
       requires_hs: false,
       requires_bachelor: true,
@@ -480,6 +520,7 @@ async function main() {
     category: "foundation",
     complexity: "simple",
     sortOrder: 1,
+    certificateTypeId: arabicCertId,
     requirements: {
       requires_hs: true,
       requires_12_years: true,
@@ -494,6 +535,7 @@ async function main() {
     category: "bachelor",
     complexity: "simple",
     sortOrder: 2,
+    certificateTypeId: arabicCertId,
     requirements: {
       requires_hs: true,
       requires_12_years: true,
@@ -509,6 +551,7 @@ async function main() {
     category: "master",
     complexity: "simple",
     sortOrder: 3,
+    certificateTypeId: arabicCertId,
     requirements: {
       requires_hs: false,
       requires_bachelor: true,
@@ -526,6 +569,7 @@ async function main() {
     category: "phd",
     complexity: "simple",
     sortOrder: 4,
+    certificateTypeId: arabicCertId,
     requirements: {
       requires_hs: false,
       requires_bachelor: true,
@@ -544,6 +588,7 @@ async function main() {
     category: "bachelor",
     complexity: "simple",
     sortOrder: 5,
+    certificateTypeId: arabicCertId,
     requirements: {
       requires_hs: true,
       requires_12_years: true,

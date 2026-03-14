@@ -44,6 +44,7 @@ Core tables with structured fields + JSON payload fields for complex logic:
 - `requirements` — per program, structured fields (requires_hs, ielts_min, sat_required, etc.)
 - `custom_requirements` — per program, structured custom conditions (question + effect + message)
 - `scholarship_tiers` — optional, for GPA-based scholarship logic
+- `certificate_types` — certificate templates (arabic, british, american, IB) with grading systems and subject rules
 - `audit_log` — who changed what and when
 
 ### Row Level Security
@@ -70,7 +71,8 @@ requires_hs, requires_12_years, requires_ielts, ielts_min, ielts_effect,
 requires_sat, sat_min, sat_effect, requires_gpa, gpa_min, gpa_effect,
 requires_bachelor, requires_entrance_exam, requires_portfolio,
 requires_audition, requires_work_experience, requires_research_plan,
-ielts_alternatives, result_notes
+ielts_alternatives, result_notes,
+a_level_subjects_min, a_level_min_grade, a_level_requires_core
 ```
 
 ### custom_requirements table (structured custom conditions)
@@ -78,6 +80,14 @@ ielts_alternatives, result_notes
 question_text, question_type (yes_no/select), effect (blocks_admission/makes_conditional),
 negative_message, positive_message, sort_order
 ```
+
+## Certificate types system
+
+* System templates (is_system=true): arabic, british, american, IB — visible to all tenants, readonly
+* Tenant custom types (is_system=false): created by admin, only visible to their tenant
+* Each program links to a certificate_type via certificate_type_id
+* British certificates auto-generate A Level questions from template_questions
+* The evaluation engine uses certificate_type properties instead of relying on program names
 
 ## How evaluation works
 
