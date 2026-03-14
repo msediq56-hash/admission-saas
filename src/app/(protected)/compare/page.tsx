@@ -7,8 +7,10 @@ import { createSupabaseBrowserClient } from "@/lib/supabase-browser";
 import { useAuth } from "@/lib/auth-context";
 import {
   compareAllPrograms,
+  isMedicalProgram,
   type StudentProfile,
   type ComparisonResult,
+  type ProgramEntry,
 } from "@/lib/comparison-engine";
 import type {
   Requirement,
@@ -22,6 +24,7 @@ const categoryColors: Record<string, string> = {
   master: "bg-purple-500/15 text-purple-400",
   phd: "bg-emerald-500/15 text-emerald-400",
   language: "bg-cyan-500/15 text-cyan-400",
+  medical: "bg-pink-500/15 text-pink-400",
 };
 
 const statusStyles: Record<
@@ -48,12 +51,19 @@ const statusStyles: Record<
   },
 };
 
-type CategoryKey = "foundation" | "bachelor" | "master" | "phd";
+type FilterKey = "foundation" | "bachelor" | "master" | "phd" | "medical";
 
 export default function ComparePage() {
   const t = useTranslations();
   const user = useAuth();
   const supabase = createSupabaseBrowserClient();
+
+  // Certificate type
+  const [certificateType, setCertificateType] = useState<"arabic" | "british">(
+    "arabic"
+  );
+  const [aLevelCount, setALevelCount] = useState<number>(1);
+  const [aLevelCCount, setALevelCCount] = useState<number>(0);
 
   // Profile form state
   const [hasHighSchool, setHasHighSchool] = useState(true);
@@ -67,21 +77,22 @@ export default function ComparePage() {
   const [hasBachelor, setHasBachelor] = useState(false);
   const [hasResearchPlan, setHasResearchPlan] = useState(false);
 
-  // Category filter
+  // Category filter (now includes "medical")
   const [selectedCategories, setSelectedCategories] = useState<
-    Record<CategoryKey, boolean>
+    Record<FilterKey, boolean>
   >({
     foundation: true,
     bachelor: true,
     master: false,
     phd: false,
+    medical: false,
   });
 
   // Results
   const [results, setResults] = useState<ComparisonResult[] | null>(null);
   const [loading, setLoading] = useState(false);
 
-  function toggleCategory(cat: CategoryKey) {
+  function toggleCategory(cat: FilterKey) {
     setSelectedCategories((prev) => ({ ...prev, [cat]: !prev[cat] }));
   }
 
@@ -97,6 +108,9 @@ export default function ComparePage() {
       satScore: hasSAT ? satScore : null,
       gpa: hasGpa ? gpa : null,
       hasResearchPlan,
+      certificateType,
+      aLevelCount: certificateType === "british" ? aLevelCount : null,
+      aLevelCCount: certificateType === "british" ? aLevelCCount : null,
     };
 
     // Fetch all programs with requirements for tenant
@@ -129,13 +143,16 @@ export default function ComparePage() {
       return;
     }
 
-    // Filter by selected categories
-    const activeCats = Object.entries(selectedCategories)
-      .filter(([, v]) => v)
-      .map(([k]) => k);
-    const filteredPrograms = programs.filter((p) =>
-      activeCats.includes(p.category)
-    );
+    // Filter by selected categories (with medical split from bachelor)
+    const filteredPrograms = programs.filter((p) => {
+      const isMedical = isMedicalProgram(p.name);
+      if (isMedical) {
+        return selectedCategories.medical;
+      }
+      // Non-medical: use DB category
+      const dbCat = p.category as FilterKey;
+      return selectedCategories[dbCat] ?? false;
+    });
 
     if (filteredPrograms.length === 0) {
       setResults([]);
@@ -175,16 +192,16 @@ export default function ComparePage() {
     }
 
     const tierMap = new Map<string, ScholarshipTier[]>();
-    for (const t of (tierRes.data || []) as (ScholarshipTier & {
+    for (const st of (tierRes.data || []) as (ScholarshipTier & {
       program_id: string;
     })[]) {
-      const arr = tierMap.get(t.program_id) || [];
-      arr.push(t);
-      tierMap.set(t.program_id, arr);
+      const arr = tierMap.get(st.program_id) || [];
+      arr.push(st);
+      tierMap.set(st.program_id, arr);
     }
 
     // Build program entries
-    const entries = filteredPrograms.map((p) => {
+    const entries: ProgramEntry[] = filteredPrograms.map((p) => {
       const uni = uniMap.get(p.university_id)!;
       return {
         programId: p.id,
@@ -205,17 +222,39 @@ export default function ComparePage() {
   }
 
   // Group results by status
-  const positiveResults = results?.filter((r) => r.status === "positive") || [];
+  const positiveResults =
+    results?.filter((r) => r.status === "positive") || [];
   const conditionalResults =
     results?.filter((r) => r.status === "conditional") || [];
-  const negativeResults = results?.filter((r) => r.status === "negative") || [];
+  const negativeResults =
+    results?.filter((r) => r.status === "negative") || [];
 
-  const categoryKeys: CategoryKey[] = [
+  const filterKeys: FilterKey[] = [
     "foundation",
     "bachelor",
+    "medical",
     "master",
     "phd",
   ];
+
+  const filterLabels: Record<FilterKey, string> = {
+    foundation: t(`categories.foundation` as Parameters<typeof t>[0]),
+    bachelor: t(`categories.bachelor` as Parameters<typeof t>[0]),
+    master: t(`categories.master` as Parameters<typeof t>[0]),
+    phd: t(`categories.phd` as Parameters<typeof t>[0]),
+    medical: t("comparison.medical"),
+  };
+
+  const filterColors: Record<FilterKey, string> = {
+    foundation: categoryColors.foundation,
+    bachelor: categoryColors.bachelor,
+    master: categoryColors.master,
+    phd: categoryColors.phd,
+    medical: categoryColors.medical,
+  };
+
+  // A Level count options for dynamic C-grade buttons
+  const maxCCount = aLevelCount;
 
   return (
     <div>
@@ -226,6 +265,96 @@ export default function ComparePage() {
 
       {/* Student Profile Form */}
       <div className="rounded-xl border border-white/10 bg-white/5 p-6 mb-8">
+        {/* Certificate Type — at top */}
+        <div className="mb-6 pb-5 border-b border-white/10">
+          <label className="block text-sm font-medium text-slate-300 mb-3">
+            {t("comparison.certificateType")}
+          </label>
+          <div className="flex gap-3">
+            <button
+              onClick={() => setCertificateType("arabic")}
+              className={`rounded-lg px-5 py-2.5 text-sm font-medium transition ${
+                certificateType === "arabic"
+                  ? "bg-blue-600/20 text-blue-400 border border-blue-500/30"
+                  : "bg-white/5 text-slate-400 border border-white/10 hover:bg-white/10"
+              }`}
+            >
+              {t("comparison.arabicCert")}
+            </button>
+            <button
+              onClick={() => setCertificateType("british")}
+              className={`rounded-lg px-5 py-2.5 text-sm font-medium transition ${
+                certificateType === "british"
+                  ? "bg-blue-600/20 text-blue-400 border border-blue-500/30"
+                  : "bg-white/5 text-slate-400 border border-white/10 hover:bg-white/10"
+              }`}
+            >
+              {t("comparison.britishCert")}
+            </button>
+          </div>
+
+          {/* British-specific questions */}
+          {certificateType === "british" && (
+            <div className="mt-4 space-y-4">
+              {/* A Level count */}
+              <div>
+                <label className="block text-sm font-medium text-slate-300 mb-2">
+                  {t("comparison.aLevelCount")}
+                </label>
+                <div className="flex gap-2">
+                  {[
+                    { value: 1, label: t("comparison.aLevel1") },
+                    { value: 2, label: t("comparison.aLevel2") },
+                    { value: 3, label: t("comparison.aLevel3") },
+                  ].map((opt) => (
+                    <button
+                      key={opt.value}
+                      onClick={() => {
+                        setALevelCount(opt.value);
+                        // Reset C count if it exceeds new count
+                        if (aLevelCCount > opt.value) {
+                          setALevelCCount(opt.value);
+                        }
+                      }}
+                      className={`rounded-lg px-4 py-2 text-sm font-medium transition ${
+                        aLevelCount === opt.value
+                          ? "bg-blue-600/20 text-blue-400 border border-blue-500/30"
+                          : "bg-white/5 text-slate-400 border border-white/10 hover:bg-white/10"
+                      }`}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* A Level C grade count */}
+              <div>
+                <label className="block text-sm font-medium text-slate-300 mb-2">
+                  {t("comparison.aLevelCCount")}
+                </label>
+                <div className="flex gap-2">
+                  {Array.from({ length: maxCCount + 1 }, (_, i) => i).map(
+                    (count) => (
+                      <button
+                        key={count}
+                        onClick={() => setALevelCCount(count)}
+                        className={`rounded-lg px-4 py-2 text-sm font-medium transition ${
+                          aLevelCCount === count
+                            ? "bg-blue-600/20 text-blue-400 border border-blue-500/30"
+                            : "bg-white/5 text-slate-400 border border-white/10 hover:bg-white/10"
+                        }`}
+                      >
+                        {count}
+                      </button>
+                    )
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+
         <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
           {/* Has High School */}
           <ToggleField
@@ -292,7 +421,9 @@ export default function ComparePage() {
                   max={9}
                   step={0.5}
                   value={ieltsScore}
-                  onChange={(e) => setIeltsScore(parseFloat(e.target.value) || 0)}
+                  onChange={(e) =>
+                    setIeltsScore(parseFloat(e.target.value) || 0)
+                  }
                   className="w-20 rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-sm text-white"
                 />
               </div>
@@ -405,17 +536,17 @@ export default function ComparePage() {
             {t("comparison.programTypes")}
           </label>
           <div className="flex flex-wrap gap-3">
-            {categoryKeys.map((cat) => (
+            {filterKeys.map((cat) => (
               <button
                 key={cat}
                 onClick={() => toggleCategory(cat)}
                 className={`rounded-full px-4 py-1.5 text-sm font-medium transition ${
                   selectedCategories[cat]
-                    ? categoryColors[cat] + " border border-current/30"
+                    ? filterColors[cat] + " border border-current/30"
                     : "bg-white/5 text-slate-500 border border-white/10 hover:bg-white/10"
                 }`}
               >
-                {t(`categories.${cat}` as Parameters<typeof t>[0])}
+                {filterLabels[cat]}
               </button>
             ))}
           </div>
@@ -551,56 +682,72 @@ function ResultSection({
         </span>
       </div>
       <div className="grid gap-4 sm:grid-cols-2">
-        {results.map((r) => (
-          <div
-            key={r.programId}
-            className={`rounded-xl border ${style.border} ${style.bg} p-5`}
-          >
-            <div className="flex flex-wrap items-start gap-2 mb-2">
-              <h3 className="text-base font-semibold text-white flex-1">
-                {r.programName}
-              </h3>
-              <span
-                className={`inline-block rounded-full px-3 py-0.5 text-xs font-medium ${
-                  categoryColors[r.category] || "bg-slate-500/15 text-slate-400"
-                }`}
-              >
-                {t(`categories.${r.category}` as Parameters<typeof t>[0])}
-              </span>
-            </div>
-
-            <p className="text-sm text-slate-400 mb-2">
-              {r.universityName} — {r.country}
-            </p>
-
-            <p className={`text-sm font-medium ${style.text} mb-2`}>
-              {r.reason}
-            </p>
-
-            {r.scholarshipInfo && (
-              <p className="text-sm text-green-400 font-medium mb-1">
-                {r.scholarshipInfo}
-              </p>
-            )}
-
-            {r.notes.length > 0 && (
-              <div className="mt-2 border-t border-white/5 pt-2">
-                {r.notes.map((note, i) => (
-                  <p key={i} className="text-xs text-slate-500">
-                    {note}
-                  </p>
-                ))}
-              </div>
-            )}
-
-            <Link
-              href="/evaluate"
-              className="mt-3 inline-block text-xs text-blue-400 hover:text-blue-300 transition"
+        {results.map((r) => {
+          const isMedical = isMedicalProgram(r.programName);
+          const displayCategory = isMedical ? "medical" : r.category;
+          return (
+            <div
+              key={r.programId}
+              className={`rounded-xl border ${style.border} ${style.bg} p-5`}
             >
-              {t("comparison.detailedEval")} →
-            </Link>
-          </div>
-        ))}
+              <div className="flex flex-wrap items-start gap-2 mb-2">
+                <h3 className="text-base font-semibold text-white flex-1">
+                  {r.programName}
+                </h3>
+                <span
+                  className={`inline-block rounded-full px-3 py-0.5 text-xs font-medium ${
+                    categoryColors[displayCategory] ||
+                    "bg-slate-500/15 text-slate-400"
+                  }`}
+                >
+                  {isMedical
+                    ? t("comparison.medical")
+                    : t(
+                        `categories.${r.category}` as Parameters<typeof t>[0]
+                      )}
+                </span>
+              </div>
+
+              <p className="text-sm text-slate-400 mb-2">
+                {r.universityName} — {r.country}
+              </p>
+
+              <p className={`text-sm font-medium ${style.text} mb-2`}>
+                {r.reason}
+              </p>
+
+              {r.scholarshipInfo && (
+                <p className="text-sm text-green-400 font-medium mb-1">
+                  {r.scholarshipInfo}
+                </p>
+              )}
+
+              {r.notes.length > 0 && (
+                <div className="mt-2 border-t border-white/5 pt-2">
+                  {r.notes.map((note, i) => (
+                    <p
+                      key={i}
+                      className={`text-xs ${
+                        note.startsWith("💡")
+                          ? "text-blue-400 font-medium"
+                          : "text-slate-500"
+                      }`}
+                    >
+                      {note}
+                    </p>
+                  ))}
+                </div>
+              )}
+
+              <Link
+                href="/evaluate"
+                className="mt-3 inline-block text-xs text-blue-400 hover:text-blue-300 transition"
+              >
+                {t("comparison.detailedEval")} →
+              </Link>
+            </div>
+          );
+        })}
       </div>
     </div>
   );

@@ -13,6 +13,9 @@ export interface StudentProfile {
   satScore: number | null;
   gpa: number | null;
   hasResearchPlan: boolean;
+  certificateType: "arabic" | "british";
+  aLevelCount: number | null;
+  aLevelCCount: number | null;
 }
 
 export interface ComparisonResult {
@@ -28,7 +31,7 @@ export interface ComparisonResult {
   scholarshipInfo: string | null;
 }
 
-interface ProgramEntry {
+export interface ProgramEntry {
   programId: string;
   programName: string;
   universityName: string;
@@ -38,6 +41,20 @@ interface ProgramEntry {
   requirements: Requirement;
   customRequirements: CustomRequirement[];
   scholarshipTiers: ScholarshipTier[];
+}
+
+// -----------------------------------------------------------
+// Check if a program is a "British certificate" program
+// -----------------------------------------------------------
+function isBritishProgram(programName: string): boolean {
+  return programName.includes("بريطانية");
+}
+
+// -----------------------------------------------------------
+// Check if a program is a medical program
+// -----------------------------------------------------------
+export function isMedicalProgram(programName: string): boolean {
+  return programName.includes("طبيات") || programName.includes("صيدلة");
 }
 
 // -----------------------------------------------------------
@@ -52,6 +69,37 @@ export function evaluateProfileAgainstProgram(
   const conditions: string[] = [];
   const notes: string[] = [];
   let scholarshipInfo: string | null = null;
+
+  // Certificate type filter: british cert → only british programs, arabic → all non-british
+  const programIsBritish = isBritishProgram(entry.programName);
+  if (profile.certificateType === "british" && !programIsBritish) {
+    return {
+      programId: entry.programId,
+      programName: entry.programName,
+      universityName: entry.universityName,
+      country: entry.country,
+      universityType: entry.universityType,
+      category: entry.category,
+      status: "negative",
+      reason: "هذا المسار مخصص لحاملي الشهادات العربية",
+      notes: [],
+      scholarshipInfo: null,
+    };
+  }
+  if (profile.certificateType === "arabic" && programIsBritish) {
+    return {
+      programId: entry.programId,
+      programName: entry.programName,
+      universityName: entry.universityName,
+      country: entry.country,
+      universityType: entry.universityType,
+      category: entry.category,
+      status: "negative",
+      reason: "هذا المسار مخصص لحاملي الشهادة البريطانية",
+      notes: [],
+      scholarshipInfo: null,
+    };
+  }
 
   // 1. High school
   if (req.requires_hs && !profile.hasHighSchool) {
@@ -201,7 +249,7 @@ export function evaluateProfileAgainstProgram(
 }
 
 // -----------------------------------------------------------
-// Compare profile against ALL programs
+// Compare profile against ALL programs, then add suggestions
 // -----------------------------------------------------------
 export function compareAllPrograms(
   profile: StudentProfile,
@@ -210,6 +258,32 @@ export function compareAllPrograms(
   const results = programs.map((entry) =>
     evaluateProfileAgainstProgram(profile, entry)
   );
+
+  // ISSUE 2: For negative results, suggest alternatives from the same university
+  // Group positive/conditional results by university
+  const eligibleByUni = new Map<string, ComparisonResult[]>();
+  for (const r of results) {
+    if (r.status === "positive" || r.status === "conditional") {
+      const arr = eligibleByUni.get(r.universityName) || [];
+      arr.push(r);
+      eligibleByUni.set(r.universityName, arr);
+    }
+  }
+
+  for (const r of results) {
+    if (r.status === "negative") {
+      const alternatives = eligibleByUni.get(r.universityName);
+      if (alternatives && alternatives.length > 0) {
+        // Pick up to 2 suggestions
+        const suggestions = alternatives
+          .slice(0, 2)
+          .map((alt) => alt.programName);
+        for (const name of suggestions) {
+          r.notes.push(`💡 جرّب: ${name}`);
+        }
+      }
+    }
+  }
 
   // Sort: positive first, then conditional, then negative
   const order: Record<string, number> = {

@@ -136,6 +136,16 @@
     "detailedEval": "التقييم التفصيلي",
     "noResults": "لا توجد مسارات مطابقة — تأكد من اختيار أنواع البرامج المناسبة",
     "yes": "نعم",
-    "no": "لا"
+    "no": "لا",
+    "certificateType": "نوع الشهادة",
+    "arabicCert": "شهادات عربية",
+    "britishCert": "شهادة بريطانية",
+    "aLevelCount": "كم مادة A Level لدى الطالب؟",
+    "aLevelCCount": "كم مادة منها بدرجة C أو أعلى؟",
+    "aLevel1": "1 مادة",
+    "aLevel2": "2 مادتان",
+    "aLevel3": "3 مواد أو أكثر",
+    "medical": "طبيات / صيدلة",
+    "trySuggestion": "جرّب"
   }
 }
