@@ -52,6 +52,31 @@
     "dashboard": "لوحة التحكم",
     "universities": "إدارة الجامعات"
   },
+  "universities": {
+    "title": "إدارة الجامعات",
+    "programs": "برامج",
+    "program": "برنامج",
+    "country": "الدولة",
+    "type": "النوع",
+    "public": "حكومية",
+    "private": "خاصة",
+    "noUniversities": "لا توجد جامعات مسجلة بعد",
+    "requirements": "المتطلبات",
+    "notes": "ملاحظات",
+    "complexity": "مستوى التعقيد",
+    "simple": "بسيط",
+    "hybrid": "مختلط",
+    "complex": "معقد",
+    "backToList": "العودة للجامعات",
+    "notFound": "الجامعة غير موجودة"
+  },
+  "categories": {
+    "foundation": "فاونديشن",
+    "bachelor": "بكالوريوس",
+    "master": "ماجستير",
+    "phd": "دكتوراة",
+    "language": "لغة"
+  },
   "evaluation": {
     "evaluate": "تقييم",
     "compare": "مقارنة",
