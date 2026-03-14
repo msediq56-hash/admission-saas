@@ -27,6 +27,7 @@ export default function LoginPage() {
       });
 
       if (signInError) {
+        console.error("Sign in error:", signInError.message, signInError.status);
         setError(t("auth.invalidCredentials"));
         setLoading(false);
         return;
@@ -38,6 +39,7 @@ export default function LoginPage() {
       } = await supabase.auth.getUser();
 
       if (!authUser) {
+        console.error("getUser returned null after successful login");
         setError(t("auth.genericError"));
         setLoading(false);
         return;
@@ -50,6 +52,7 @@ export default function LoginPage() {
         .single();
 
       if (userError || !userData) {
+        console.error("User query error:", userError?.message, userError?.code, "userId:", authUser.id);
         setError(t("auth.userNotFound"));
         await supabase.auth.signOut();
         setLoading(false);
@@ -68,7 +71,8 @@ export default function LoginPage() {
       } else {
         router.push("/dashboard");
       }
-    } catch {
+    } catch (err) {
+      console.error("Login unexpected error:", err);
       setError(t("auth.genericError"));
       setLoading(false);
     }

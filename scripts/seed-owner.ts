@@ -23,7 +23,7 @@ async function seed() {
   const { data: authData, error: authError } =
     await supabase.auth.admin.createUser({
       email: "m.sediq56@gmail.com",
-      password: "Admin123!",
+      password: "123456",
       email_confirm: true,
     });
 
@@ -89,7 +89,7 @@ async function seedData(userId: string) {
   }
 
   console.log("Seed completed successfully!");
-  console.log("Login with: m.sediq56@gmail.com / Admin123!");
+  console.log("Login with: m.sediq56@gmail.com / 123456");
 }
 
 seed();
