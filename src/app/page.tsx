@@ -1,7 +1,7 @@
-import { useTranslations } from "next-intl";
+import { getTranslations } from "next-intl/server";
 
-export default function Home() {
-  const t = useTranslations();
+export default async function Home() {
+  const t = await getTranslations();
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-[#0f1c2e] to-[#1a2d47] text-white">
