@@ -10,13 +10,47 @@
     "edit": "تعديل",
     "back": "رجوع",
     "next": "التالي",
-    "loading": "جاري التحميل..."
+    "loading": "جاري التحميل...",
+    "welcome": "مرحباً"
   },
   "landing": {
     "title": "منصة تقييم أهلية القبول",
     "subtitle": "نظام ذكي لتقييم أهلية الطلاب للقبول الجامعي",
     "trySystem": "تجربة النظام",
     "login": "تسجيل الدخول"
+  },
+  "auth": {
+    "loginTitle": "تسجيل الدخول",
+    "loginSubtitle": "أدخل بياناتك للوصول إلى لوحة التحكم",
+    "email": "البريد الإلكتروني",
+    "emailPlaceholder": "أدخل بريدك الإلكتروني",
+    "password": "كلمة المرور",
+    "passwordPlaceholder": "أدخل كلمة المرور",
+    "loginButton": "تسجيل الدخول",
+    "loggingIn": "جاري تسجيل الدخول...",
+    "invalidCredentials": "البريد الإلكتروني أو كلمة المرور غير صحيحة",
+    "genericError": "حدث خطأ أثناء تسجيل الدخول. يرجى المحاولة مرة أخرى",
+    "userNotFound": "لم يتم العثور على حساب مستخدم مرتبط. تواصل مع المسؤول",
+    "accountDisabled": "تم تعطيل حسابك. تواصل مع المسؤول"
+  },
+  "sidebar": {
+    "evaluate": "تقييم",
+    "compare": "مقارنة",
+    "dashboard": "لوحة التحكم",
+    "universities": "الجامعات",
+    "users": "المستخدمين",
+    "settings": "الإعدادات"
+  },
+  "roles": {
+    "advisor": "مستشار",
+    "admin": "مدير",
+    "owner": "مالك"
+  },
+  "pages": {
+    "evaluate": "تقييم الطلاب",
+    "compare": "مقارنة البرامج",
+    "dashboard": "لوحة التحكم",
+    "universities": "إدارة الجامعات"
   },
   "evaluation": {
     "evaluate": "تقييم",
