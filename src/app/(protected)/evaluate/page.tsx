@@ -15,7 +15,15 @@ import {
   type ScholarshipTier,
 } from "@/lib/evaluation-engine";
 
-type Step = "university" | "program" | "questions" | "result";
+// Steps: country → type → university → category → program → questions → result
+type Step =
+  | "country"
+  | "type"
+  | "university"
+  | "category"
+  | "program"
+  | "questions"
+  | "result";
 
 interface University {
   id: string;
@@ -65,18 +73,23 @@ export default function EvaluatePage() {
   const user = useAuth();
   const supabase = createSupabaseBrowserClient();
 
-  const [step, setStep] = useState<Step>("university");
+  const [step, setStep] = useState<Step>("country");
 
-  // Step 1
-  const [universities, setUniversities] = useState<University[]>([]);
+  // All universities (fetched once)
+  const [allUniversities, setAllUniversities] = useState<University[]>([]);
+
+  // Selection state
+  const [selectedCountry, setSelectedCountry] = useState<string | null>(null);
+  const [selectedType, setSelectedType] = useState<string | null>(null);
   const [selectedUniversity, setSelectedUniversity] =
     useState<University | null>(null);
-
-  // Step 2
-  const [programs, setPrograms] = useState<Program[]>([]);
+  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [selectedProgram, setSelectedProgram] = useState<Program | null>(null);
 
-  // Step 3
+  // Programs for selected university
+  const [programs, setPrograms] = useState<Program[]>([]);
+
+  // Questions
   const [questions, setQuestions] = useState<EvaluationQuestion[]>([]);
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [answers, setAnswers] = useState<EvaluationAnswer[]>([]);
@@ -86,12 +99,17 @@ export default function EvaluatePage() {
     scholarshipTiers: ScholarshipTier[];
   } | null>(null);
 
-  // Step 4
+  // Track which question caused early exit to negative result
+  const [blockedAtQuestionIndex, setBlockedAtQuestionIndex] = useState<
+    number | null
+  >(null);
+
+  // Result
   const [result, setResult] = useState<EvaluationResult | null>(null);
 
   const [loading, setLoading] = useState(false);
 
-  // Fetch universities on mount
+  // Fetch all universities once
   useEffect(() => {
     async function fetch() {
       const { data } = await supabase
@@ -100,11 +118,39 @@ export default function EvaluatePage() {
         .eq("tenant_id", user.tenantId)
         .eq("is_active", true)
         .order("sort_order");
-      if (data) setUniversities(data);
+      if (data) setAllUniversities(data);
     }
     fetch();
   }, [user.tenantId]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Derived data
+  const countries = [...new Set(allUniversities.map((u) => u.country))];
+
+  const typesForCountry = selectedCountry
+    ? [
+        ...new Set(
+          allUniversities
+            .filter((u) => u.country === selectedCountry)
+            .map((u) => u.type)
+        ),
+      ]
+    : [];
+
+  const universitiesForSelection = allUniversities.filter(
+    (u) =>
+      u.country === selectedCountry &&
+      (selectedType ? u.type === selectedType : true)
+  );
+
+  const categoriesForUniversity = selectedUniversity
+    ? [...new Set(programs.map((p) => p.category))]
+    : [];
+
+  const programsForCategory = selectedCategory
+    ? programs.filter((p) => p.category === selectedCategory)
+    : [];
+
+  // Fetch programs when university selected
   const fetchPrograms = useCallback(
     async (universityId: string) => {
       setLoading(true);
@@ -116,6 +162,7 @@ export default function EvaluatePage() {
         .order("sort_order");
       if (data) setPrograms(data);
       setLoading(false);
+      return data || [];
     },
     [supabase]
   );
@@ -151,9 +198,9 @@ export default function EvaluatePage() {
       setQuestions(built);
       setCurrentQuestionIndex(0);
       setAnswers([]);
+      setBlockedAtQuestionIndex(null);
       setLoading(false);
 
-      // If no questions, evaluate immediately
       if (built.length === 0) {
         const evalResult = evaluateAnswers([], req, customReqs, tiers, built);
         setResult(evalResult);
@@ -163,11 +210,81 @@ export default function EvaluatePage() {
     [supabase]
   );
 
-  function handleSelectUniversity(uni: University) {
+  // --- Handlers ---
+
+  function handleSelectCountry(country: string) {
+    setSelectedCountry(country);
+    // Check if only one type for this country — skip type step
+    const types = [
+      ...new Set(
+        allUniversities
+          .filter((u) => u.country === country)
+          .map((u) => u.type)
+      ),
+    ];
+    if (types.length === 1) {
+      setSelectedType(types[0]);
+      // Check if only one university for this country+type
+      const unis = allUniversities.filter(
+        (u) => u.country === country && u.type === types[0]
+      );
+      if (unis.length === 1) {
+        handleSelectUniversity(unis[0]);
+      } else {
+        setStep("university");
+      }
+    } else {
+      setStep("type");
+    }
+  }
+
+  function handleSelectType(type: string) {
+    setSelectedType(type);
+    const unis = allUniversities.filter(
+      (u) => u.country === selectedCountry && u.type === type
+    );
+    if (unis.length === 1) {
+      handleSelectUniversity(unis[0]);
+    } else {
+      setStep("university");
+    }
+  }
+
+  async function handleSelectUniversity(uni: University) {
     setSelectedUniversity(uni);
-    setSelectedProgram(null);
-    setStep("program");
-    fetchPrograms(uni.id);
+    setSelectedCountry(uni.country);
+    setSelectedType(uni.type);
+    const fetchedPrograms = await fetchPrograms(uni.id);
+
+    // Get unique categories
+    const cats = [...new Set(fetchedPrograms.map((p: Program) => p.category))];
+    if (cats.length === 1) {
+      // Only one category — skip category selection
+      const progsInCat = fetchedPrograms.filter(
+        (p: Program) => p.category === cats[0]
+      );
+      setSelectedCategory(cats[0]);
+      if (progsInCat.length === 1) {
+        // Only one program — select it directly
+        setSelectedProgram(progsInCat[0]);
+        setStep("questions");
+        fetchAndBuildQuestions(progsInCat[0].id);
+      } else {
+        setStep("program");
+      }
+    } else {
+      setStep("category");
+    }
+  }
+
+  function handleSelectCategory(category: string) {
+    setSelectedCategory(category);
+    const progsInCat = programs.filter((p) => p.category === category);
+    if (progsInCat.length === 1) {
+      handleSelectProgram(progsInCat[0]);
+    } else {
+      setStep("program");
+    }
   }
 
   function handleSelectProgram(prog: Program) {
@@ -186,6 +303,7 @@ export default function EvaluatePage() {
 
     // Immediate blocking check
     if (currentQ.isBlocking && value === "no") {
+      setBlockedAtQuestionIndex(currentQuestionIndex);
       const evalResult = evaluateAnswers(
         newAnswers,
         requirementData!.req,
@@ -201,6 +319,7 @@ export default function EvaluatePage() {
     if (currentQuestionIndex < questions.length - 1) {
       setCurrentQuestionIndex(currentQuestionIndex + 1);
     } else {
+      setBlockedAtQuestionIndex(null);
       const evalResult = evaluateAnswers(
         newAnswers,
         requirementData!.req,
@@ -215,49 +334,139 @@ export default function EvaluatePage() {
 
   function handleBack() {
     switch (step) {
-      case "program":
-        setStep("university");
+      case "type":
+        setSelectedCountry(null);
+        setSelectedType(null);
+        setStep("country");
+        break;
+      case "university":
+        // Go back to type if multiple types, else back to country
+        if (typesForCountry.length > 1) {
+          setSelectedType(null);
+          setStep("type");
+        } else {
+          setSelectedCountry(null);
+          setSelectedType(null);
+          setStep("country");
+        }
+        break;
+      case "category":
         setSelectedUniversity(null);
+        setSelectedCategory(null);
+        // Go back to university if multiple unis, else further back
+        if (universitiesForSelection.length > 1) {
+          setStep("university");
+        } else if (typesForCountry.length > 1) {
+          setSelectedType(null);
+          setStep("type");
+        } else {
+          setSelectedCountry(null);
+          setSelectedType(null);
+          setStep("country");
+        }
+        break;
+      case "program":
+        if (categoriesForUniversity.length > 1) {
+          setSelectedCategory(null);
+          setStep("category");
+        } else {
+          setSelectedUniversity(null);
+          setSelectedCategory(null);
+          setStep("university");
+        }
         break;
       case "questions":
         if (currentQuestionIndex > 0) {
           setCurrentQuestionIndex(currentQuestionIndex - 1);
         } else {
-          setStep("program");
+          // Back to program selection
           setSelectedProgram(null);
+          if (programsForCategory.length > 1) {
+            setStep("program");
+          } else if (categoriesForUniversity.length > 1) {
+            setSelectedCategory(null);
+            setStep("category");
+          } else {
+            setSelectedUniversity(null);
+            setSelectedCategory(null);
+            setStep("university");
+          }
         }
         break;
       case "result":
-        // Go back to last question (or program if no questions)
+        // Go back to the question that caused blocking (or last question)
         if (questions.length > 0) {
+          const goBackTo =
+            blockedAtQuestionIndex !== null
+              ? blockedAtQuestionIndex
+              : questions.length - 1;
+          // Remove the answer for the question we're going back to
+          const qId = questions[goBackTo].id;
+          setAnswers(answers.filter((a) => a.questionId !== qId));
+          setCurrentQuestionIndex(goBackTo);
+          setResult(null);
+          setBlockedAtQuestionIndex(null);
           setStep("questions");
-          setCurrentQuestionIndex(questions.length - 1);
         } else {
-          setStep("program");
           setSelectedProgram(null);
+          setResult(null);
+          setStep("program");
         }
         break;
     }
   }
 
   function handleReset() {
-    setStep("university");
+    setStep("country");
+    setSelectedCountry(null);
+    setSelectedType(null);
     setSelectedUniversity(null);
+    setSelectedCategory(null);
     setSelectedProgram(null);
+    setPrograms([]);
     setQuestions([]);
     setAnswers([]);
     setResult(null);
     setCurrentQuestionIndex(0);
+    setBlockedAtQuestionIndex(null);
     setRequirementData(null);
   }
 
-  const steps = [
-    { key: "university", label: t("evaluation.selectUniversity") },
-    { key: "program", label: t("evaluation.selectProgram") },
-    { key: "questions", label: t("evaluation.answerQuestions") },
-    { key: "result", label: t("evaluation.result") },
+  // Step indicator — simplified to 4 high-level steps
+  const stepGroup = (() => {
+    if (
+      step === "country" ||
+      step === "type" ||
+      step === "university"
+    )
+      return 0;
+    if (step === "category" || step === "program") return 1;
+    if (step === "questions") return 2;
+    return 3;
+  })();
+
+  const stepLabels = [
+    t("evaluation.selectUniversity"),
+    t("evaluation.selectProgram"),
+    t("evaluation.answerQuestions"),
+    t("evaluation.result"),
   ];
-  const currentStepIndex = steps.findIndex((s) => s.key === step);
+
+  // Breadcrumb
+  const breadcrumbParts: string[] = [];
+  if (selectedCountry) breadcrumbParts.push(selectedCountry);
+  if (selectedType)
+    breadcrumbParts.push(
+      selectedType === "public"
+        ? t("universities.public")
+        : t("universities.private")
+    );
+  if (selectedUniversity) breadcrumbParts.push(selectedUniversity.name);
+  if (selectedCategory)
+    breadcrumbParts.push(
+      t(`categories.${selectedCategory}` as Parameters<typeof t>[0])
+    );
+  if (selectedProgram) breadcrumbParts.push(selectedProgram.name);
 
   return (
     <div>
@@ -266,14 +475,14 @@ export default function EvaluatePage() {
       </h1>
 
       {/* Step indicator */}
-      <div className="flex items-center gap-2 mb-8 overflow-x-auto pb-2">
-        {steps.map((s, i) => (
-          <div key={s.key} className="flex items-center gap-2">
+      <div className="flex items-center gap-2 mb-6 overflow-x-auto pb-2">
+        {stepLabels.map((label, i) => (
+          <div key={i} className="flex items-center gap-2">
             <div
               className={`flex items-center gap-2 rounded-full px-4 py-1.5 text-sm font-medium whitespace-nowrap ${
-                i === currentStepIndex
+                i === stepGroup
                   ? "bg-blue-600/20 text-blue-400"
-                  : i < currentStepIndex
+                  : i < stepGroup
                     ? "bg-white/10 text-white"
                     : "bg-white/5 text-slate-500"
               }`}
@@ -281,17 +490,24 @@ export default function EvaluatePage() {
               <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-white/10 text-xs">
                 {i + 1}
               </span>
-              {s.label}
+              {label}
             </div>
-            {i < steps.length - 1 && (
+            {i < stepLabels.length - 1 && (
               <span className="text-slate-600">—</span>
             )}
           </div>
         ))}
       </div>
 
+      {/* Breadcrumb */}
+      {breadcrumbParts.length > 0 && step !== "result" && (
+        <p className="mb-4 text-sm text-slate-500">
+          {breadcrumbParts.join(" › ")}
+        </p>
+      )}
+
       {/* Back button */}
-      {step !== "university" && step !== "result" && (
+      {step !== "country" && step !== "result" && (
         <button
           onClick={handleBack}
           className="mb-4 text-sm text-slate-400 hover:text-white transition"
@@ -300,58 +516,96 @@ export default function EvaluatePage() {
         </button>
       )}
 
-      {/* STEP 1: Select University */}
-      {step === "university" && (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {universities.map((uni) => (
-            <button
-              key={uni.id}
-              onClick={() => handleSelectUniversity(uni)}
-              className="rounded-xl border border-white/10 bg-white/5 p-6 text-right transition hover:border-blue-500/50 hover:bg-white/10"
-            >
-              <h3 className="text-lg font-bold text-white">{uni.name}</h3>
-              <p className="mt-1 text-sm text-slate-400">
-                {uni.country}
-                {" — "}
-                {uni.type === "public"
-                  ? t("universities.public")
-                  : t("universities.private")}
-              </p>
-            </button>
-          ))}
+      {/* STEP: Select Country */}
+      {step === "country" && (
+        <div>
+          <h2 className="text-lg font-semibold text-slate-300 mb-4">
+            {t("evaluation.selectCountry")}
+          </h2>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {countries.map((country) => (
+              <button
+                key={country}
+                onClick={() => handleSelectCountry(country)}
+                className="rounded-xl border border-white/10 bg-white/5 p-5 text-right text-lg font-semibold text-white transition hover:border-blue-500/50 hover:bg-white/10"
+              >
+                {country}
+              </button>
+            ))}
+          </div>
         </div>
       )}
 
-      {/* STEP 2: Select Program */}
-      {step === "program" && (
+      {/* STEP: Select Type */}
+      {step === "type" && (
         <div>
-          <p className="mb-4 text-slate-400">{selectedUniversity?.name}</p>
+          <h2 className="text-lg font-semibold text-slate-300 mb-4">
+            {t("evaluation.selectType")}
+          </h2>
+          <div className="grid gap-3 sm:grid-cols-2">
+            {typesForCountry.map((type) => (
+              <button
+                key={type}
+                onClick={() => handleSelectType(type)}
+                className="rounded-xl border border-white/10 bg-white/5 p-5 text-right text-lg font-semibold text-white transition hover:border-blue-500/50 hover:bg-white/10"
+              >
+                {type === "public"
+                  ? t("universities.public")
+                  : t("universities.private")}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* STEP: Select University */}
+      {step === "university" && (
+        <div>
+          <h2 className="text-lg font-semibold text-slate-300 mb-4">
+            {t("evaluation.selectUniversity")}
+          </h2>
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {universitiesForSelection.map((uni) => (
+              <button
+                key={uni.id}
+                onClick={() => handleSelectUniversity(uni)}
+                className="rounded-xl border border-white/10 bg-white/5 p-6 text-right transition hover:border-blue-500/50 hover:bg-white/10"
+              >
+                <h3 className="text-lg font-bold text-white">{uni.name}</h3>
+                <p className="mt-1 text-sm text-slate-400">
+                  {uni.country}
+                  {" — "}
+                  {uni.type === "public"
+                    ? t("universities.public")
+                    : t("universities.private")}
+                </p>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* STEP: Select Category */}
+      {step === "category" && (
+        <div>
+          <h2 className="text-lg font-semibold text-slate-300 mb-4">
+            {t("evaluation.selectCategory")}
+          </h2>
           {loading ? (
             <p className="text-slate-400">{t("common.loading")}</p>
-          ) : programs.length === 0 ? (
-            <p className="text-slate-400">{t("evaluation.noPrograms")}</p>
           ) : (
-            <div className="grid gap-3 sm:grid-cols-2">
-              {programs.map((prog) => (
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {categoriesForUniversity.map((cat) => (
                 <button
-                  key={prog.id}
-                  onClick={() => handleSelectProgram(prog)}
-                  className="rounded-xl border border-white/10 bg-white/5 p-5 text-right transition hover:border-blue-500/50 hover:bg-white/10"
+                  key={cat}
+                  onClick={() => handleSelectCategory(cat)}
+                  className={`rounded-xl border border-white/10 bg-white/5 p-5 text-right transition hover:border-blue-500/50 hover:bg-white/10`}
                 >
-                  <div className="flex items-start justify-between gap-3">
-                    <h3 className="text-base font-semibold text-white">
-                      {prog.name}
-                    </h3>
-                    <span
-                      className={`shrink-0 rounded-full px-3 py-0.5 text-xs font-medium ${categoryColors[prog.category] || "bg-slate-500/15 text-slate-400"}`}
-                    >
-                      {t(
-                        `categories.${prog.category}` as Parameters<
-                          typeof t
-                        >[0]
-                      )}
-                    </span>
-                  </div>
+                  <span
+                    className={`inline-block rounded-full px-3 py-1 text-sm font-medium ${categoryColors[cat] || "bg-slate-500/15 text-slate-400"}`}
+                  >
+                    {t(`categories.${cat}` as Parameters<typeof t>[0])}
+                  </span>
                 </button>
               ))}
             </div>
@@ -359,15 +613,38 @@ export default function EvaluatePage() {
         </div>
       )}
 
-      {/* STEP 3: Answer Questions */}
+      {/* STEP: Select Program (specific variant) */}
+      {step === "program" && (
+        <div>
+          <h2 className="text-lg font-semibold text-slate-300 mb-4">
+            {t("evaluation.selectCertificate")}
+          </h2>
+          {loading ? (
+            <p className="text-slate-400">{t("common.loading")}</p>
+          ) : programsForCategory.length === 0 ? (
+            <p className="text-slate-400">{t("evaluation.noPrograms")}</p>
+          ) : (
+            <div className="grid gap-3 sm:grid-cols-2">
+              {programsForCategory.map((prog) => (
+                <button
+                  key={prog.id}
+                  onClick={() => handleSelectProgram(prog)}
+                  className="rounded-xl border border-white/10 bg-white/5 p-5 text-right transition hover:border-blue-500/50 hover:bg-white/10"
+                >
+                  <h3 className="text-base font-semibold text-white">
+                    {prog.name}
+                  </h3>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* STEP: Answer Questions */}
       {step === "questions" && !loading && questions.length > 0 && (
         <div>
-          <p className="mb-2 text-slate-400">
-            {selectedUniversity?.name} — {selectedProgram?.name}
-          </p>
-
           <div className="mt-4">
-            {/* Progress */}
             <div className="mb-6 flex items-center justify-between">
               <span className="text-sm text-slate-400">
                 {t("evaluation.questionOf", {
@@ -385,7 +662,6 @@ export default function EvaluatePage() {
               </div>
             </div>
 
-            {/* Current question */}
             <div className="rounded-xl border border-white/10 bg-white/5 p-8">
               <h3 className="text-xl font-semibold text-white mb-8">
                 {questions[currentQuestionIndex].text}
@@ -428,11 +704,11 @@ export default function EvaluatePage() {
         <p className="text-slate-400">{t("evaluation.loadingProgram")}</p>
       )}
 
-      {/* STEP 4: Result */}
+      {/* STEP: Result */}
       {step === "result" && result && (
         <div>
-          <p className="mb-4 text-slate-400">
-            {selectedUniversity?.name} — {selectedProgram?.name}
+          <p className="mb-4 text-sm text-slate-500">
+            {breadcrumbParts.join(" › ")}
           </p>
 
           <div
@@ -450,7 +726,6 @@ export default function EvaluatePage() {
               {result.message}
             </p>
 
-            {/* Conditions */}
             {result.conditions.length > 0 && (
               <div className="mb-6">
                 <h4 className="text-sm font-semibold text-slate-300 mb-3">
@@ -473,7 +748,6 @@ export default function EvaluatePage() {
               </div>
             )}
 
-            {/* Scholarship */}
             {result.scholarshipInfo && (
               <div className="mb-6 rounded-lg bg-white/5 border border-white/10 p-4">
                 <h4 className="text-sm font-semibold text-slate-300 mb-1">
@@ -485,7 +759,6 @@ export default function EvaluatePage() {
               </div>
             )}
 
-            {/* Notes */}
             {result.notes.length > 0 && (
               <div>
                 <h4 className="text-sm font-semibold text-slate-300 mb-2">
