@@ -93,6 +93,27 @@ export async function PATCH(
         .from("requirements")
         .update({ certificate_type_id: toCertTypeId ?? null })
         .eq("id", convertRowId);
+
+      // Auto-migrate legacy IELTS → language_cert when converting to cert-specific
+      // This prevents data loss when field visibility hides legacy IELTS fields
+      if (toCertTypeId) {
+        const { data: reqRow } = await supabase
+          .from("requirements")
+          .select("requires_ielts, ielts_min, ielts_effect, requires_language_cert")
+          .eq("id", convertRowId)
+          .single();
+
+        if (reqRow && reqRow.requires_ielts && !reqRow.requires_language_cert) {
+          await supabase
+            .from("requirements")
+            .update({
+              requires_language_cert: true,
+              accepted_language_certs: [{ type: "IELTS", min_score: reqRow.ielts_min ?? 0 }],
+              language_cert_effect: reqRow.ielts_effect || "blocks_if_below",
+            })
+            .eq("id", convertRowId);
+        }
+      }
     }
 
     // Update custom_requirements: change from old cert type to new cert type
@@ -121,7 +142,7 @@ export async function PATCH(
     }
     await stUpdateQuery;
 
-    return NextResponse.json({ ok: true });
+    return NextResponse.json({ ok: true, converted_cert_type_id: toCertTypeId });
   }
 
   // ─── Update program info ───

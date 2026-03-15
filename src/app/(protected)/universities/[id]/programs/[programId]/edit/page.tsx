@@ -686,23 +686,18 @@ export default function EditProgramPage({
         setSaving(false);
       }
 
-      // Also update custom_requirements to match the new cert type
-      if (universalTab.customReqs.length > 0) {
-        for (const cr of universalTab.customReqs) {
-          if (cr.id) {
-            await supabase
-              .from("custom_requirements")
-              .update({ certificate_type_id: certTypeId })
-              .eq("id", cr.id);
-          }
-        }
-      }
-
       // Reload data from DB to ensure state is fully consistent
+      // (API handler already migrates custom_requirements + legacy IELTS → language_cert)
       setShowCertTypePicker(false);
       setToast(`تم نسخ الشروط العامة إلى تبويب ${ct.name_ar}`);
       setTimeout(() => setToast(""), 3000);
       await loadData();
+      // Find and activate the newly converted tab
+      setTabs((prev) => {
+        const idx = prev.findIndex((tab) => tab.certTypeId === certTypeId);
+        if (idx >= 0) setActiveTabIndex(idx);
+        return prev;
+      });
     } else {
       // Already in multi-cert mode — add new tab with empty defaults
       const newTab: CertTypeTab = {
@@ -1300,27 +1295,25 @@ export default function EditProgramPage({
                     )}
                   </div>
                 )}
-                {/* Legacy IELTS toggle — only shown in universal tab when language cert is NOT enabled */}
-                {!reqs.requires_language_cert && !activeCertSlug && (
-                  <>
-                    <Toggle label={t("admin.requiresIELTS")} checked={reqs.requires_ielts} onChange={(v) => updateReq("requires_ielts", v)} />
-                    {reqs.requires_ielts && (
-                      <div className="mr-8 grid gap-4 sm:grid-cols-2">
-                        <div>
-                          <label className="block text-xs text-slate-400 mb-1">{t("admin.ieltsMin")}</label>
-                          <input type="number" step="0.5" value={reqs.ielts_min ?? ""} onChange={(e) => updateReq("ielts_min", e.target.value ? Number(e.target.value) : null)} className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white focus:border-blue-500 focus:outline-none" />
-                        </div>
-                        <div>
-                          <label className="block text-xs text-slate-400 mb-1">{t("admin.ieltsEffect")}</label>
-                          <select value={reqs.ielts_effect || ""} onChange={(e) => updateReq("ielts_effect", e.target.value || null)} className="w-full rounded-lg border border-white/10 bg-[#0f1c2e] px-3 py-2 text-sm text-white focus:border-blue-500 focus:outline-none">
-                            <option value="" className="bg-[#0f1c2e] text-white">—</option>
-                            <option value="blocks_if_below" className="bg-[#0f1c2e] text-white">{t("admin.blocksIfBelow")}</option>
-                            <option value="conditional" className="bg-[#0f1c2e] text-white">{t("admin.conditional")}</option>
-                          </select>
-                        </div>
+                {/* Legacy IELTS — shown only when language cert is OFF and old IELTS data exists */}
+                {!reqs.requires_language_cert && reqs.requires_ielts && (
+                  <div className="rounded-lg border border-yellow-500/20 bg-yellow-500/5 p-3 mt-2">
+                    <p className="text-xs text-yellow-400 mb-2">{t("admin.legacyIeltsNote")}</p>
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      <div>
+                        <label className="block text-xs text-slate-400 mb-1">{t("admin.ieltsMin")}</label>
+                        <input type="number" step="0.5" value={reqs.ielts_min ?? ""} onChange={(e) => updateReq("ielts_min", e.target.value ? Number(e.target.value) : null)} className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white focus:border-blue-500 focus:outline-none" />
                       </div>
-                    )}
-                  </>
+                      <div>
+                        <label className="block text-xs text-slate-400 mb-1">{t("admin.ieltsEffect")}</label>
+                        <select value={reqs.ielts_effect || ""} onChange={(e) => updateReq("ielts_effect", e.target.value || null)} className="w-full rounded-lg border border-white/10 bg-[#0f1c2e] px-3 py-2 text-sm text-white focus:border-blue-500 focus:outline-none">
+                          <option value="" className="bg-[#0f1c2e] text-white">—</option>
+                          <option value="blocks_if_below" className="bg-[#0f1c2e] text-white">{t("admin.blocksIfBelow")}</option>
+                          <option value="conditional" className="bg-[#0f1c2e] text-white">{t("admin.conditional")}</option>
+                        </select>
+                      </div>
+                    </div>
+                  </div>
                 )}
               </div>
             )}
