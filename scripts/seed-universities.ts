@@ -207,6 +207,9 @@ async function main() {
       positive_message?: string;
       sort_order: number;
       option_effects?: unknown;
+      show_in_comparison?: boolean;
+      comparison_input_type?: string;
+      comparison_key?: string;
     }>
   ) {
     const rows = customReqs.map((cr) => ({
@@ -711,6 +714,9 @@ async function main() {
       effect: "makes_conditional",
       positive_message: "مشروط بدخول واجتياز امتحان القبول",
       sort_order: 1,
+      show_in_comparison: true,
+      comparison_input_type: "select",
+      comparison_key: "debrecen_exam_subjects",
     },
   ]);
 

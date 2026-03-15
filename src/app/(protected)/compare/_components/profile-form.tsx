@@ -7,6 +7,13 @@ import { categoryColors } from "@/lib/ui-constants";
 
 type FilterKey = "foundation" | "bachelor" | "master" | "phd" | "medical";
 
+export interface DynamicField {
+  comparison_key: string;
+  question_text: string;
+  comparison_input_type: "toggle" | "number" | "select";
+  options?: string[] | null;
+}
+
 export interface ProfileFormResult {
   profile: StudentProfile;
   selectedCategories: Record<FilterKey, boolean>;
@@ -15,9 +22,11 @@ export interface ProfileFormResult {
 export function ProfileForm({
   onSubmit,
   loading,
+  dynamicFields = [],
 }: {
   onSubmit: (data: ProfileFormResult) => void;
   loading: boolean;
+  dynamicFields?: DynamicField[];
 }) {
   const t = useTranslations();
 
@@ -39,6 +48,15 @@ export function ProfileForm({
   const [gpa, setGpa] = useState(85);
   const [hasBachelor, setHasBachelor] = useState(false);
   const [hasResearchPlan, setHasResearchPlan] = useState(false);
+
+  // Dynamic answers
+  const [dynamicAnswers, setDynamicAnswers] = useState<
+    Record<string, string | boolean | number>
+  >({});
+
+  function updateDynamic(key: string, value: string | boolean | number) {
+    setDynamicAnswers((prev) => ({ ...prev, [key]: value }));
+  }
 
   // Category filter
   const [selectedCategories, setSelectedCategories] = useState<
@@ -68,6 +86,8 @@ export function ProfileForm({
       certificateType,
       aLevelCount: certificateType === "british" ? aLevelCount : null,
       aLevelCCount: certificateType === "british" ? aLevelCCount : null,
+      dynamicAnswers:
+        Object.keys(dynamicAnswers).length > 0 ? dynamicAnswers : undefined,
     };
     onSubmit({ profile, selectedCategories });
   }
@@ -355,6 +375,84 @@ export function ProfileForm({
           noLabel={t("comparison.no")}
         />
       </div>
+
+      {/* Dynamic Fields */}
+      {dynamicFields.length > 0 && (
+        <div className="mt-6 border-t border-white/10 pt-5">
+          <label className="block text-sm font-medium text-slate-300 mb-3">
+            {t("admin.dynamicRequirements")}
+          </label>
+          <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+            {dynamicFields.map((field) => {
+              const key = field.comparison_key;
+              if (field.comparison_input_type === "toggle") {
+                return (
+                  <ToggleField
+                    key={key}
+                    label={field.question_text}
+                    value={(dynamicAnswers[key] as boolean) || false}
+                    onChange={(v) => updateDynamic(key, v)}
+                    yesLabel={t("comparison.yes")}
+                    noLabel={t("comparison.no")}
+                  />
+                );
+              }
+              if (field.comparison_input_type === "number") {
+                return (
+                  <div key={key}>
+                    <label className="block text-sm font-medium text-slate-300 mb-2">
+                      {field.question_text}
+                    </label>
+                    <input
+                      type="number"
+                      value={(dynamicAnswers[key] as number) || ""}
+                      onChange={(e) =>
+                        updateDynamic(
+                          key,
+                          e.target.value ? parseFloat(e.target.value) : 0
+                        )
+                      }
+                      className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white"
+                    />
+                  </div>
+                );
+              }
+              if (
+                field.comparison_input_type === "select" &&
+                field.options &&
+                field.options.length > 0
+              ) {
+                return (
+                  <div key={key}>
+                    <label className="block text-sm font-medium text-slate-300 mb-2">
+                      {field.question_text}
+                    </label>
+                    <select
+                      value={(dynamicAnswers[key] as string) || ""}
+                      onChange={(e) => updateDynamic(key, e.target.value)}
+                      className="w-full rounded-lg border border-white/10 bg-[#0f1c2e] px-3 py-2 text-sm text-white focus:border-blue-500 focus:outline-none"
+                    >
+                      <option value="" className="bg-[#0f1c2e] text-white">
+                        —
+                      </option>
+                      {field.options.map((opt) => (
+                        <option
+                          key={opt}
+                          value={opt}
+                          className="bg-[#0f1c2e] text-white"
+                        >
+                          {opt}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                );
+              }
+              return null;
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Category Filter */}
       <div className="mt-6 border-t border-white/10 pt-5">

@@ -29,6 +29,9 @@ interface CustomRequirement {
   positive_message: string;
   sort_order: number;
   option_effects?: Record<string, OptionEffect> | null;
+  show_in_comparison: boolean;
+  comparison_input_type: "toggle" | "number" | "select" | null;
+  comparison_key: string;
 }
 
 interface Requirements {
@@ -166,6 +169,9 @@ function mapCustomRow(cr: Record<string, unknown>): CustomRequirement {
     positive_message: (cr.positive_message as string) || "",
     sort_order: cr.sort_order as number,
     option_effects: (cr.option_effects as Record<string, OptionEffect> | null) || null,
+    show_in_comparison: (cr.show_in_comparison as boolean) || false,
+    comparison_input_type: (cr.comparison_input_type as "toggle" | "number" | "select" | null) || null,
+    comparison_key: (cr.comparison_key as string) || "",
   };
 }
 
@@ -395,6 +401,9 @@ export default function EditProgramPage({
               negative_message: "",
               positive_message: "",
               sort_order: tab.customReqs.length,
+              show_in_comparison: false,
+              comparison_input_type: null,
+              comparison_key: "",
             },
           ],
         };
@@ -1200,6 +1209,41 @@ export default function EditProgramPage({
                   )}
                 </div>
               )}
+
+              {/* Comparison settings */}
+              <div className="border-t border-white/5 pt-3 space-y-3">
+                <Toggle
+                  label={t("admin.showInComparison")}
+                  checked={cr.show_in_comparison}
+                  onChange={(v) => updateCustomReq(index, "show_in_comparison", v)}
+                />
+                {cr.show_in_comparison && (
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div>
+                      <label className="block text-xs text-slate-400 mb-1">{t("admin.comparisonInputType")}</label>
+                      <select
+                        value={cr.comparison_input_type || "toggle"}
+                        onChange={(e) => updateCustomReq(index, "comparison_input_type", e.target.value)}
+                        className="w-full rounded-lg border border-white/10 bg-[#0f1c2e] px-3 py-2 text-sm text-white focus:border-blue-500 focus:outline-none"
+                      >
+                        <option value="toggle" className="bg-[#0f1c2e] text-white">{t("admin.comparisonToggle")}</option>
+                        <option value="number" className="bg-[#0f1c2e] text-white">{t("admin.comparisonNumber")}</option>
+                        <option value="select" className="bg-[#0f1c2e] text-white">{t("admin.comparisonSelect")}</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-xs text-slate-400 mb-1">{t("admin.comparisonKey")}</label>
+                      <input
+                        type="text"
+                        value={cr.comparison_key}
+                        onChange={(e) => updateCustomReq(index, "comparison_key", e.target.value)}
+                        placeholder="e.g. has_duolingo_65"
+                        className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white placeholder-slate-500 focus:border-blue-500 focus:outline-none"
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
           ))}
 

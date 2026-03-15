@@ -184,6 +184,9 @@ export async function PATCH(
             options: cr.options || null,
             option_effects: cr.option_effects || null,
             certificate_type_id: certTypeId ?? null,
+            show_in_comparison: cr.show_in_comparison || false,
+            comparison_input_type: cr.comparison_input_type || null,
+            comparison_key: cr.comparison_key || null,
           })
           .eq("id", cr.id);
       } else {
@@ -199,6 +202,9 @@ export async function PATCH(
           sort_order: cr.sort_order || 0,
           options: cr.options || null,
           option_effects: cr.option_effects || null,
+          show_in_comparison: cr.show_in_comparison || false,
+          comparison_input_type: cr.comparison_input_type || null,
+          comparison_key: cr.comparison_key || null,
         });
       }
     }

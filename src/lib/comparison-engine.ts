@@ -16,6 +16,7 @@ export interface StudentProfile {
   certificateType: "arabic" | "british";
   aLevelCount: number | null;
   aLevelCCount: number | null;
+  dynamicAnswers?: Record<string, string | boolean | number>;
 }
 
 export interface ComparisonResult {
@@ -241,7 +242,57 @@ export function evaluateProfileAgainstProgram(
     notes.push(req.result_notes);
   }
 
-  // 12. Build final result
+  // 12. Dynamic custom_requirements (show_in_comparison = true)
+  if (entry.customRequirements && profile.dynamicAnswers) {
+    for (const cr of entry.customRequirements) {
+      if (!cr.show_in_comparison || !cr.comparison_key) continue;
+
+      const answer = profile.dynamicAnswers[cr.comparison_key];
+
+      if (cr.comparison_input_type === "toggle") {
+        // Toggle: true = yes, false/undefined = no
+        const isYes = answer === true;
+        if (!isYes) {
+          if (cr.effect === "blocks_admission") {
+            negatives.push(cr.negative_message || cr.question_text);
+          } else {
+            conditions.push(cr.negative_message || cr.question_text);
+          }
+        }
+      } else if (cr.comparison_input_type === "number") {
+        // Number: has value = yes, no value = no
+        const hasValue = answer !== undefined && answer !== null && answer !== "" && answer !== 0;
+        if (!hasValue) {
+          if (cr.effect === "blocks_admission") {
+            negatives.push(cr.negative_message || cr.question_text);
+          } else {
+            conditions.push(cr.negative_message || cr.question_text);
+          }
+        }
+      } else if (cr.comparison_input_type === "select") {
+        // Select: apply option_effects if available, otherwise default effect
+        const selectedOption = typeof answer === "string" ? answer : "";
+        if (cr.option_effects && selectedOption && cr.option_effects[selectedOption]) {
+          const oe = cr.option_effects[selectedOption];
+          if (oe.effect === "blocks_admission") {
+            negatives.push(oe.message || cr.negative_message || cr.question_text);
+          } else if (oe.effect === "makes_conditional") {
+            conditions.push(oe.message || cr.negative_message || cr.question_text);
+          }
+          // "none" → no effect
+        } else if (!selectedOption) {
+          // No selection made — apply default effect
+          if (cr.effect === "blocks_admission") {
+            negatives.push(cr.negative_message || cr.question_text);
+          } else {
+            conditions.push(cr.negative_message || cr.question_text);
+          }
+        }
+      }
+    }
+  }
+
+  // 13. Build final result
   const base = {
     programId: entry.programId,
     programName: entry.programName,

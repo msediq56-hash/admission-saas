@@ -831,6 +831,98 @@ test("سؤال اختيار مع option_effects — خيار بدون تأثير
 });
 
 // ============================================================
+// Dynamic comparison fields (2 cases)
+// ============================================================
+console.log("\n═══ حقول المقارنة الديناميكية ═══");
+
+// Case 40
+test("حقل ديناميكي — toggle يحظر القبول عند false", () => {
+  const entry = makeEntry({
+    programName: "برنامج اختبار ديناميكي",
+    category: "bachelor",
+    requirements: { requires_hs: true },
+    customRequirements: [
+      {
+        id: "dyn-1",
+        question_text: "هل لدى الطالب شهادة Duolingo 65+؟",
+        question_type: "yes_no",
+        effect: "blocks_admission",
+        negative_message: "يحتاج شهادة Duolingo بدرجة 65 أو أعلى",
+        sort_order: 1,
+        show_in_comparison: true,
+        comparison_input_type: "toggle",
+        comparison_key: "has_duolingo_65",
+      },
+    ],
+  });
+
+  // Without dynamicAnswers (false) → negative
+  const profileNo: StudentProfile = { ...BASE_ARABIC, dynamicAnswers: { has_duolingo_65: false } };
+  const resultNo = evaluateProfileAgainstProgram(profileNo, entry);
+  assert.strictEqual(resultNo.status, "negative");
+  assert.ok(
+    resultNo.reason.includes("Duolingo"),
+    `السبب يجب أن يذكر Duolingo, حصلنا: ${resultNo.reason}`
+  );
+
+  // With dynamicAnswers (true) → positive
+  const profileYes: StudentProfile = { ...BASE_ARABIC, dynamicAnswers: { has_duolingo_65: true } };
+  const resultYes = evaluateProfileAgainstProgram(profileYes, entry);
+  assert.strictEqual(resultYes.status, "positive");
+});
+
+// Case 41
+test("حقل ديناميكي — select مع option_effects", () => {
+  const entry = makeEntry({
+    programName: "برنامج اختبار select",
+    category: "bachelor",
+    requirements: { requires_hs: true },
+    customRequirements: [
+      {
+        id: "dyn-2",
+        question_text: "مستوى اللغة الإنجليزية",
+        question_type: "select",
+        options: ["ممتاز", "متوسط", "ضعيف"],
+        effect: "makes_conditional",
+        negative_message: "مستوى اللغة غير محدد",
+        sort_order: 1,
+        show_in_comparison: true,
+        comparison_input_type: "select",
+        comparison_key: "english_level",
+        option_effects: {
+          "ممتاز": { effect: "none", message: null },
+          "متوسط": { effect: "makes_conditional", message: "يحتاج فصل تحضيري للغة" },
+          "ضعيف": { effect: "blocks_admission", message: "مستوى اللغة غير كافي" },
+        },
+      },
+    ],
+  });
+
+  // "ممتاز" → none → positive
+  const profileExcellent: StudentProfile = { ...BASE_ARABIC, dynamicAnswers: { english_level: "ممتاز" } };
+  const resultExcellent = evaluateProfileAgainstProgram(profileExcellent, entry);
+  assert.strictEqual(resultExcellent.status, "positive");
+
+  // "متوسط" → conditional
+  const profileMedium: StudentProfile = { ...BASE_ARABIC, dynamicAnswers: { english_level: "متوسط" } };
+  const resultMedium = evaluateProfileAgainstProgram(profileMedium, entry);
+  assert.strictEqual(resultMedium.status, "conditional");
+  assert.ok(
+    resultMedium.reason.includes("فصل تحضيري"),
+    `السبب يجب أن يذكر الفصل التحضيري, حصلنا: ${resultMedium.reason}`
+  );
+
+  // "ضعيف" → blocks → negative
+  const profileWeak: StudentProfile = { ...BASE_ARABIC, dynamicAnswers: { english_level: "ضعيف" } };
+  const resultWeak = evaluateProfileAgainstProgram(profileWeak, entry);
+  assert.strictEqual(resultWeak.status, "negative");
+  assert.ok(
+    resultWeak.reason.includes("مستوى اللغة غير كافي"),
+    `السبب يجب أن يذكر مستوى اللغة, حصلنا: ${resultWeak.reason}`
+  );
+});
+
+// ============================================================
 // Summary
 // ============================================================
 console.log("\n════════════════════════════════════════");

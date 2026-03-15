@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useTranslations } from "next-intl";
 import { createSupabaseBrowserClient } from "@/lib/supabase-browser";
 import { useAuth } from "@/lib/auth-context";
@@ -15,7 +15,7 @@ import type {
   CustomRequirement,
   ScholarshipTier,
 } from "@/lib/evaluation-engine";
-import { ProfileForm, type ProfileFormResult } from "./_components/profile-form";
+import { ProfileForm, type ProfileFormResult, type DynamicField } from "./_components/profile-form";
 import { ResultsList } from "./_components/results-list";
 
 type FilterKey = "foundation" | "bachelor" | "master" | "phd" | "medical";
@@ -27,6 +27,39 @@ export default function ComparePage() {
 
   const [results, setResults] = useState<ComparisonResult[] | null>(null);
   const [loading, setLoading] = useState(false);
+  const [dynamicFields, setDynamicFields] = useState<DynamicField[]>([]);
+
+  // Load dynamic fields on mount
+  useEffect(() => {
+    async function loadDynamicFields() {
+      const { data } = await supabase
+        .from("custom_requirements")
+        .select("comparison_key, question_text, comparison_input_type, options")
+        .eq("show_in_comparison", true);
+
+      if (!data || data.length === 0) {
+        setDynamicFields([]);
+        return;
+      }
+
+      // Deduplicate by comparison_key
+      const seen = new Set<string>();
+      const fields: DynamicField[] = [];
+      for (const row of data) {
+        if (!row.comparison_key || seen.has(row.comparison_key)) continue;
+        seen.add(row.comparison_key);
+        fields.push({
+          comparison_key: row.comparison_key,
+          question_text: row.question_text,
+          comparison_input_type: row.comparison_input_type as DynamicField["comparison_input_type"],
+          options: row.options as string[] | null,
+        });
+      }
+      setDynamicFields(fields);
+    }
+    loadDynamicFields();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   async function handleEvaluate({ profile, selectedCategories }: ProfileFormResult) {
     setLoading(true);
@@ -259,7 +292,11 @@ export default function ComparePage() {
       </h1>
       <p className="text-slate-400 mb-6">{t("comparison.subtitle")}</p>
 
-      <ProfileForm onSubmit={handleEvaluate} loading={loading} />
+      <ProfileForm
+        onSubmit={handleEvaluate}
+        loading={loading}
+        dynamicFields={dynamicFields}
+      />
 
       {results !== null && <ResultsList results={results} />}
     </div>

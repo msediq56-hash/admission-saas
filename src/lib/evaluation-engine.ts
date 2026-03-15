@@ -81,6 +81,10 @@ export interface CustomRequirement {
   positive_message?: string;
   sort_order: number;
   option_effects?: Record<string, { effect: string; message: string | null }> | null;
+  // Dynamic comparison fields
+  show_in_comparison?: boolean;
+  comparison_input_type?: "toggle" | "number" | "select" | null;
+  comparison_key?: string | null;
 }
 
 export interface ScholarshipTier {
