@@ -1,5 +1,5 @@
 // ============================================================
-// V2 Parity Tests — 30 test cases for the comparison engine
+// V2 Parity Tests — 39 test cases for the evaluation + comparison engines
 // Verifies V3 produces identical results to V2 for all 3 universities
 // Run: npx tsx tests/v2-parity.test.ts
 // ============================================================
@@ -26,6 +26,8 @@ import assert from "node:assert";
 
 // ============================================================
 // Test fixtures — mirror seed data exactly
+// After Phase 1 refactor: cert type is on requirements, not programs
+// Each ProgramEntry represents a program + cert-type-specific requirements
 // ============================================================
 
 function makeEntry(
@@ -50,9 +52,10 @@ function makeEntry(
 }
 
 // --- Constructor University ---
+// Now one "بكالوريوس" program with cert type on requirements
 
 const CONSTRUCTOR_BACHELOR_ARABIC = makeEntry({
-  programName: "بكالوريوس — شهادات عربية",
+  programName: "بكالوريوس",
   universityName: "جامعة كونستركتر",
   category: "bachelor",
   certificateTypeSlug: "arabic",
@@ -80,7 +83,7 @@ const CONSTRUCTOR_BACHELOR_ARABIC = makeEntry({
 });
 
 const CONSTRUCTOR_BACHELOR_BRITISH = makeEntry({
-  programName: "بكالوريوس — شهادة بريطانية",
+  programName: "بكالوريوس",
   universityName: "جامعة كونستركتر",
   category: "bachelor",
   certificateTypeSlug: "british",
@@ -103,7 +106,7 @@ const CONSTRUCTOR_BACHELOR_BRITISH = makeEntry({
 });
 
 const CONSTRUCTOR_FOUNDATION_ARABIC = makeEntry({
-  programName: "سنة تأسيسية — شهادات عربية",
+  programName: "سنة تأسيسية",
   universityName: "جامعة كونستركتر",
   category: "foundation",
   certificateTypeSlug: "arabic",
@@ -114,7 +117,7 @@ const CONSTRUCTOR_FOUNDATION_ARABIC = makeEntry({
 });
 
 const CONSTRUCTOR_FOUNDATION_BRITISH = makeEntry({
-  programName: "سنة تأسيسية — شهادة بريطانية",
+  programName: "سنة تأسيسية",
   universityName: "جامعة كونستركتر",
   category: "foundation",
   certificateTypeSlug: "british",
@@ -144,12 +147,13 @@ const CONSTRUCTOR_MASTER = makeEntry({
 });
 
 // --- SRH University ---
+// Requirements have certificate_type_id = null (universal)
 
 const SRH_IEF = makeEntry({
   programName: "برنامج اللغة الإنجليزية التأسيسي المكثف (IEF)",
   universityName: "جامعة SRH",
   category: "foundation",
-  certificateTypeSlug: "arabic",
+  certificateTypeSlug: null,
   requirements: {
     requires_hs: true,
     requires_ielts: true,
@@ -167,7 +171,7 @@ const SRH_FOUNDATION_BUSINESS = makeEntry({
   programName: "فاونديشن في البزنس",
   universityName: "جامعة SRH",
   category: "foundation",
-  certificateTypeSlug: "arabic",
+  certificateTypeSlug: null,
   requirements: {
     requires_hs: true,
     requires_ielts: true,
@@ -181,7 +185,7 @@ const SRH_FOUNDATION_CREATIVE = makeEntry({
   programName: "فاونديشن في الدراسات الإبداعية",
   universityName: "جامعة SRH",
   category: "foundation",
-  certificateTypeSlug: "arabic",
+  certificateTypeSlug: null,
   requirements: {
     requires_hs: true,
     requires_ielts: true,
@@ -195,7 +199,7 @@ const SRH_FOUNDATION_ENGINEERING = makeEntry({
   programName: "فاونديشن الهندسة وتكنولوجيا المعلومات",
   universityName: "جامعة SRH",
   category: "foundation",
-  certificateTypeSlug: "arabic",
+  certificateTypeSlug: null,
   requirements: {
     requires_hs: true,
     requires_ielts: true,
@@ -209,7 +213,7 @@ const SRH_PRE_MASTER = makeEntry({
   programName: "بري ماستر (ما قبل الماجستير)",
   universityName: "جامعة SRH",
   category: "foundation",
-  certificateTypeSlug: "arabic",
+  certificateTypeSlug: null,
   requirements: {
     requires_hs: false,
     requires_bachelor: true,
@@ -224,7 +228,7 @@ const SRH_BACHELOR = makeEntry({
   programName: "بكالوريوس",
   universityName: "جامعة SRH",
   category: "bachelor",
-  certificateTypeSlug: "arabic",
+  certificateTypeSlug: null,
   requirements: {
     requires_hs: true,
     requires_ielts: true,
@@ -238,7 +242,7 @@ const SRH_MASTER = makeEntry({
   programName: "ماجستير",
   universityName: "جامعة SRH",
   category: "master",
-  certificateTypeSlug: "arabic",
+  certificateTypeSlug: null,
   requirements: {
     requires_hs: false,
     requires_bachelor: true,
@@ -253,6 +257,7 @@ const SRH_MASTER = makeEntry({
 });
 
 // --- Debrecen University ---
+// Requirements have certificate_type_id = null (universal)
 
 const DEBRECEN_FOUNDATION = makeEntry({
   programName: "فاونديشن",
@@ -260,7 +265,7 @@ const DEBRECEN_FOUNDATION = makeEntry({
   country: "هنغاريا",
   universityType: "public",
   category: "foundation",
-  certificateTypeSlug: "arabic",
+  certificateTypeSlug: null,
   requirements: {
     requires_hs: true,
     requires_12_years: true,
@@ -274,7 +279,7 @@ const DEBRECEN_BACHELOR = makeEntry({
   country: "هنغاريا",
   universityType: "public",
   category: "bachelor",
-  certificateTypeSlug: "arabic",
+  certificateTypeSlug: null,
   requirements: {
     requires_hs: true,
     requires_12_years: true,
@@ -289,7 +294,7 @@ const DEBRECEN_MASTER = makeEntry({
   country: "هنغاريا",
   universityType: "public",
   category: "master",
-  certificateTypeSlug: "arabic",
+  certificateTypeSlug: null,
   requirements: {
     requires_hs: false,
     requires_bachelor: true,
@@ -306,7 +311,7 @@ const DEBRECEN_PHD = makeEntry({
   country: "هنغاريا",
   universityType: "public",
   category: "phd",
-  certificateTypeSlug: "arabic",
+  certificateTypeSlug: null,
   requirements: {
     requires_hs: false,
     requires_bachelor: true,
@@ -324,7 +329,7 @@ const DEBRECEN_MEDICAL = makeEntry({
   country: "هنغاريا",
   universityType: "public",
   category: "bachelor",
-  certificateTypeSlug: "arabic",
+  certificateTypeSlug: null,
   requirements: {
     requires_hs: true,
     requires_12_years: true,
@@ -423,7 +428,6 @@ test("عربي + ثانوية + بدون SAT + IELTS 7.0 → بكالوريوس 
 test("عربي + ثانوية + SAT 1300 + بدون IELTS → بكالوريوس مؤهل (ملاحظة مقابلة، ليس حظر)", () => {
   const profile: StudentProfile = { ...BASE_ARABIC, hasSAT: true, satScore: 1300 };
   const result = evaluateProfileAgainstProgram(profile, CONSTRUCTOR_BACHELOR_ARABIC);
-  // Interview effect should NOT block — status should be positive (no SAT condition since SAT >= 1200)
   assert.strictEqual(result.status, "positive");
   assert.ok(result.notes.some(n => n.includes("مقابلة")), `يجب أن تحتوي ملاحظة المقابلة`);
 });

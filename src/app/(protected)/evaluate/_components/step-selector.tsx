@@ -148,6 +148,48 @@ export function CategoryStep({
   );
 }
 
+interface CertificateTypeOption {
+  id: string;
+  slug: string;
+  name_ar: string;
+}
+
+export function CertificateTypeStep({
+  certTypes,
+  loading,
+  onSelect,
+}: {
+  certTypes: CertificateTypeOption[];
+  loading: boolean;
+  onSelect: (ct: CertificateTypeOption) => void;
+}) {
+  const t = useTranslations();
+  return (
+    <div>
+      <h2 className="text-lg font-semibold text-slate-300 mb-4">
+        {t("evaluation.selectCertificate")}
+      </h2>
+      {loading ? (
+        <p className="text-slate-400">{t("common.loading")}</p>
+      ) : (
+        <div className="grid gap-3 sm:grid-cols-2">
+          {certTypes.map((ct) => (
+            <button
+              key={ct.id}
+              onClick={() => onSelect(ct)}
+              className="rounded-xl border border-white/10 bg-white/5 p-5 text-right transition hover:border-blue-500/50 hover:bg-white/10"
+            >
+              <h3 className="text-base font-semibold text-white">
+                {ct.name_ar}
+              </h3>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function ProgramStep({
   programs,
   loading,

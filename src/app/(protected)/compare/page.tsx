@@ -46,10 +46,10 @@ export default function ComparePage() {
 
     const uniMap = new Map(universities.map((u) => [u.id, u]));
 
-    // Fetch ALL programs with certificate_types join (no category filter yet)
+    // Fetch ALL programs (no certificate_types join needed on programs anymore)
     const { data: programs } = await supabase
       .from("programs")
-      .select("id, name, category, university_id, certificate_types(slug)")
+      .select("id, name, category, university_id")
       .in(
         "university_id",
         universities.map((u) => u.id)
@@ -64,12 +64,15 @@ export default function ComparePage() {
 
     const programIds = programs.map((p) => p.id);
 
-    // Fetch requirements, custom_requirements, scholarship_tiers for ALL programs
+    // Fetch requirements with certificate_types join to get slug
     const [reqRes, customRes, tierRes] = await Promise.all([
-      supabase.from("requirements").select("*").in("program_id", programIds),
+      supabase
+        .from("requirements")
+        .select("*, certificate_types(slug)")
+        .in("program_id", programIds),
       supabase
         .from("custom_requirements")
-        .select("*")
+        .select("*, certificate_types(slug)")
         .in("program_id", programIds)
         .order("sort_order"),
       supabase
@@ -79,52 +82,160 @@ export default function ComparePage() {
         .order("sort_order"),
     ]);
 
-    const reqMap = new Map<string, Requirement>();
-    for (const r of reqRes.data || []) {
-      reqMap.set(r.program_id, r as Requirement);
+    // Group requirements by (program_id, certificate_type_id)
+    // Key format: "programId|certTypeId" or "programId|null"
+    type ReqRow = Requirement & {
+      program_id: string;
+      certificate_type_id: string | null;
+      certificate_types: { slug: string } | null;
+    };
+    type CustomRow = CustomRequirement & {
+      program_id: string;
+      certificate_type_id: string | null;
+      certificate_types: { slug: string } | null;
+    };
+    type TierRow = ScholarshipTier & {
+      program_id: string;
+      certificate_type_id: string | null;
+    };
+
+    const reqsByKey = new Map<string, ReqRow[]>();
+    for (const r of (reqRes.data || []) as ReqRow[]) {
+      const key = `${r.program_id}|${r.certificate_type_id || "null"}`;
+      const arr = reqsByKey.get(key) || [];
+      arr.push(r);
+      reqsByKey.set(key, arr);
     }
 
-    const customMap = new Map<string, CustomRequirement[]>();
-    for (const c of (customRes.data || []) as (CustomRequirement & {
-      program_id: string;
-    })[]) {
-      const arr = customMap.get(c.program_id) || [];
+    const customsByProgramCert = new Map<string, CustomRow[]>();
+    for (const c of (customRes.data || []) as CustomRow[]) {
+      const key = `${c.program_id}|${c.certificate_type_id || "null"}`;
+      const arr = customsByProgramCert.get(key) || [];
       arr.push(c);
-      customMap.set(c.program_id, arr);
+      customsByProgramCert.set(key, arr);
     }
 
-    const tierMap = new Map<string, ScholarshipTier[]>();
-    for (const st of (tierRes.data || []) as (ScholarshipTier & {
-      program_id: string;
-    })[]) {
-      const arr = tierMap.get(st.program_id) || [];
+    const tiersByProgramCert = new Map<string, TierRow[]>();
+    for (const st of (tierRes.data || []) as TierRow[]) {
+      const key = `${st.program_id}|${st.certificate_type_id || "null"}`;
+      const arr = tiersByProgramCert.get(key) || [];
       arr.push(st);
-      tierMap.set(st.program_id, arr);
+      tiersByProgramCert.set(key, arr);
     }
 
-    // Build entries for ALL programs (including certificateTypeSlug)
-    const entries: ProgramEntry[] = programs.map((p) => {
+    // Build ProgramEntry objects — one per (program, certType) combination
+    const entries: ProgramEntry[] = [];
+
+    for (const p of programs) {
       const uni = uniMap.get(p.university_id)!;
-      const certTypes = p.certificate_types as unknown as
-        | { slug: string }
-        | { slug: string }[]
-        | null;
-      const certSlug = Array.isArray(certTypes)
-        ? certTypes[0]?.slug || null
-        : certTypes?.slug || null;
-      return {
-        programId: p.id,
-        programName: p.name,
-        universityName: uni.name,
-        country: uni.country,
-        universityType: uni.type,
-        category: p.category,
-        certificateTypeSlug: certSlug,
-        requirements: reqMap.get(p.id) || ({} as Requirement),
-        customRequirements: customMap.get(p.id) || [],
-        scholarshipTiers: tierMap.get(p.id) || [],
-      };
-    });
+
+      // Find all distinct cert type keys for this program's requirements
+      const programReqKeys = [...reqsByKey.keys()].filter((k) =>
+        k.startsWith(`${p.id}|`)
+      );
+
+      if (programReqKeys.length === 0) {
+        // No requirements at all — include as universal
+        entries.push({
+          programId: p.id,
+          programName: p.name,
+          universityName: uni.name,
+          country: uni.country,
+          universityType: uni.type,
+          category: p.category,
+          certificateTypeSlug: null,
+          requirements: {} as Requirement,
+          customRequirements: [],
+          scholarshipTiers: [],
+        });
+        continue;
+      }
+
+      // Check if there are cert-specific requirement rows
+      const certSpecificKeys = programReqKeys.filter(
+        (k) => !k.endsWith("|null")
+      );
+      const universalKey = `${p.id}|null`;
+      const hasUniversalReqs = reqsByKey.has(universalKey);
+
+      if (certSpecificKeys.length > 0) {
+        // Program has cert-specific requirements — create one entry per cert type
+        for (const key of certSpecificKeys) {
+          const reqs = reqsByKey.get(key) || [];
+          const certSlug =
+            (reqs[0]?.certificate_types as { slug: string } | null)?.slug ||
+            null;
+
+          // Merge with universal requirements if they exist
+          const universalReqs = reqsByKey.get(universalKey) || [];
+          const mergedReq: Requirement = {} as Requirement;
+
+          // Apply universal first, then cert-specific (cert-specific takes precedence)
+          for (const row of [...universalReqs, ...reqs]) {
+            for (const [k, v] of Object.entries(row)) {
+              if (
+                k !== "program_id" &&
+                k !== "certificate_type_id" &&
+                k !== "certificate_types" &&
+                k !== "id" &&
+                k !== "tenant_id" &&
+                k !== "created_at" &&
+                k !== "updated_at" &&
+                v !== null &&
+                v !== undefined &&
+                v !== false
+              ) {
+                (mergedReq as Record<string, unknown>)[k] = v;
+              }
+            }
+          }
+
+          // Get customs: cert-specific + universal
+          const certCustoms = customsByProgramCert.get(key) || [];
+          const universalCustoms =
+            customsByProgramCert.get(universalKey) || [];
+          const allCustoms = [...universalCustoms, ...certCustoms];
+
+          // Get tiers: cert-specific + universal
+          const certTiers = tiersByProgramCert.get(key) || [];
+          const universalTiers =
+            tiersByProgramCert.get(universalKey) || [];
+          const allTiers = [...universalTiers, ...certTiers];
+
+          entries.push({
+            programId: p.id,
+            programName: p.name,
+            universityName: uni.name,
+            country: uni.country,
+            universityType: uni.type,
+            category: p.category,
+            certificateTypeSlug: certSlug,
+            requirements: mergedReq,
+            customRequirements: allCustoms,
+            scholarshipTiers: allTiers,
+          });
+        }
+      } else if (hasUniversalReqs) {
+        // Only universal requirements
+        const reqs = reqsByKey.get(universalKey) || [];
+        const req = reqs[0] || ({} as Requirement);
+        const customs = customsByProgramCert.get(universalKey) || [];
+        const tiers = tiersByProgramCert.get(universalKey) || [];
+
+        entries.push({
+          programId: p.id,
+          programName: p.name,
+          universityName: uni.name,
+          country: uni.country,
+          universityType: uni.type,
+          category: p.category,
+          certificateTypeSlug: null,
+          requirements: req,
+          customRequirements: customs,
+          scholarshipTiers: tiers,
+        });
+      }
+    }
 
     // Evaluate ALL programs first (so cross-program suggestions work)
     const allResults = compareAllPrograms(profile, entries);

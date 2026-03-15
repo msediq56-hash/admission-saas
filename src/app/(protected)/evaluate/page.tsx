@@ -23,6 +23,7 @@ import {
   UniversityStep,
   CategoryStep,
   ProgramStep,
+  CertificateTypeStep,
 } from "./_components/step-selector";
 import { QuestionWizard } from "./_components/question-wizard";
 import { EvaluationResultView } from "./_components/evaluation-result";
@@ -33,6 +34,7 @@ type Step =
   | "university"
   | "category"
   | "program"
+  | "certType"
   | "questions"
   | "result";
 
@@ -50,6 +52,12 @@ interface Program {
   complexity_level: string;
 }
 
+interface CertificateTypeOption {
+  id: string;
+  slug: string;
+  name_ar: string;
+}
+
 export default function EvaluatePage() {
   const t = useTranslations();
   const user = useAuth();
@@ -63,6 +71,11 @@ export default function EvaluatePage() {
     useState<University | null>(null);
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [selectedProgram, setSelectedProgram] = useState<Program | null>(null);
+  const [selectedCertType, setSelectedCertType] =
+    useState<CertificateTypeOption | null>(null);
+  const [availableCertTypes, setAvailableCertTypes] = useState<
+    CertificateTypeOption[]
+  >([]);
   const [programs, setPrograms] = useState<Program[]>([]);
   const [questions, setQuestions] = useState<EvaluationQuestion[]>([]);
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
@@ -132,25 +145,70 @@ export default function EvaluatePage() {
     [supabase]
   );
 
-  const fetchAndBuildQuestions = useCallback(
+  // Fetch available cert types for a program from its requirements
+  const fetchCertTypesForProgram = useCallback(
     async (programId: string) => {
       setLoading(true);
+      const { data: progReqs } = await supabase
+        .from("requirements")
+        .select("certificate_type_id, certificate_types(id, slug, name_ar)")
+        .eq("program_id", programId);
+
+      const certTypes: CertificateTypeOption[] = [];
+      const seen = new Set<string>();
+      for (const r of progReqs || []) {
+        if (r.certificate_type_id && r.certificate_types) {
+          const ct = r.certificate_types as unknown as CertificateTypeOption;
+          if (!seen.has(ct.id)) {
+            seen.add(ct.id);
+            certTypes.push(ct);
+          }
+        }
+      }
+      setAvailableCertTypes(certTypes);
+      setLoading(false);
+      return certTypes;
+    },
+    [supabase]
+  );
+
+  const fetchAndBuildQuestions = useCallback(
+    async (programId: string, certTypeId: string | null) => {
+      setLoading(true);
+
+      // Build filter for cert-type-scoped data
+      // Load requirements matching: cert_type = selected OR cert_type IS NULL
+      let reqQuery = supabase
+        .from("requirements")
+        .select("*")
+        .eq("program_id", programId);
+      let customQuery = supabase
+        .from("custom_requirements")
+        .select("*")
+        .eq("program_id", programId)
+        .order("sort_order");
+      let tierQuery = supabase
+        .from("scholarship_tiers")
+        .select("*")
+        .eq("program_id", programId)
+        .order("sort_order");
+
+      if (certTypeId) {
+        reqQuery = reqQuery.or(
+          `certificate_type_id.eq.${certTypeId},certificate_type_id.is.null`
+        );
+        customQuery = customQuery.or(
+          `certificate_type_id.eq.${certTypeId},certificate_type_id.is.null`
+        );
+        tierQuery = tierQuery.or(
+          `certificate_type_id.eq.${certTypeId},certificate_type_id.is.null`
+        );
+      }
+
       const [reqRes, customRes, scholarshipRes, majorsRes] = await Promise.all([
-        supabase
-          .from("requirements")
-          .select("*")
-          .eq("program_id", programId)
-          .single(),
-        supabase
-          .from("custom_requirements")
-          .select("*")
-          .eq("program_id", programId)
-          .order("sort_order"),
-        supabase
-          .from("scholarship_tiers")
-          .select("*")
-          .eq("program_id", programId)
-          .order("sort_order"),
+        reqQuery,
+        customQuery,
+        tierQuery,
         supabase
           .from("majors")
           .select("id, name_ar, name_en, group_code")
@@ -159,7 +217,20 @@ export default function EvaluatePage() {
           .order("sort_order"),
       ]);
 
-      const req = (reqRes.data as Requirement) || {};
+      // Merge multiple requirement rows into one (if there are both cert-specific and null rows)
+      const reqRows = (reqRes.data || []) as Requirement[];
+      const req: Requirement = reqRows.length > 0 ? { ...reqRows[0] } : ({} as Requirement);
+      // If multiple rows, merge: cert-specific takes precedence, but also include null-cert fields
+      if (reqRows.length > 1) {
+        for (const row of reqRows) {
+          for (const [key, value] of Object.entries(row)) {
+            if (value !== null && value !== undefined && value !== false) {
+              (req as Record<string, unknown>)[key] = value;
+            }
+          }
+        }
+      }
+
       const customReqs = (customRes.data as CustomRequirement[]) || [];
       const tiers = (scholarshipRes.data as ScholarshipTier[]) || [];
       const fetchedMajors = (majorsRes.data as Major[]) || [];
@@ -207,10 +278,32 @@ export default function EvaluatePage() {
     setStep("program");
   }
 
-  function handleSelectProgram(prog: Program) {
+  async function handleSelectProgram(prog: Program) {
     setSelectedProgram(prog);
+
+    // Check if this program has multiple cert-type-specific requirement rows
+    const certTypes = await fetchCertTypesForProgram(prog.id);
+
+    if (certTypes.length > 1) {
+      // Multiple cert types → show cert type selection
+      setStep("certType");
+    } else if (certTypes.length === 1) {
+      // Exactly one cert type → auto-select and go to questions
+      setSelectedCertType(certTypes[0]);
+      setStep("questions");
+      fetchAndBuildQuestions(prog.id, certTypes[0].id);
+    } else {
+      // No cert-specific requirements → universal, go straight to questions
+      setSelectedCertType(null);
+      setStep("questions");
+      fetchAndBuildQuestions(prog.id, null);
+    }
+  }
+
+  function handleSelectCertType(ct: CertificateTypeOption) {
+    setSelectedCertType(ct);
     setStep("questions");
-    fetchAndBuildQuestions(prog.id);
+    fetchAndBuildQuestions(selectedProgram!.id, ct.id);
   }
 
   async function handleAnswer(value: string) {
@@ -312,11 +405,20 @@ export default function EvaluatePage() {
         setSelectedCategory(null);
         setStep("category");
         break;
+      case "certType":
+        setSelectedCertType(null);
+        setStep("program");
+        break;
       case "questions":
         if (currentQuestionIndex > 0) {
           setCurrentQuestionIndex(currentQuestionIndex - 1);
+        } else if (availableCertTypes.length > 1) {
+          // Go back to cert type selection
+          setSelectedCertType(null);
+          setStep("certType");
         } else {
           setSelectedProgram(null);
+          setSelectedCertType(null);
           setStep("program");
         }
         break;
@@ -334,6 +436,7 @@ export default function EvaluatePage() {
           setStep("questions");
         } else {
           setSelectedProgram(null);
+          setSelectedCertType(null);
           setResult(null);
           setStep("program");
         }
@@ -348,6 +451,8 @@ export default function EvaluatePage() {
     setSelectedUniversity(null);
     setSelectedCategory(null);
     setSelectedProgram(null);
+    setSelectedCertType(null);
+    setAvailableCertTypes([]);
     setPrograms([]);
     setQuestions([]);
     setAnswers([]);
@@ -362,7 +467,8 @@ export default function EvaluatePage() {
   const stepGroup = (() => {
     if (step === "country" || step === "type" || step === "university")
       return 0;
-    if (step === "category" || step === "program") return 1;
+    if (step === "category" || step === "program" || step === "certType")
+      return 1;
     if (step === "questions") return 2;
     return 3;
   })();
@@ -389,6 +495,7 @@ export default function EvaluatePage() {
       t(`categories.${selectedCategory}` as Parameters<typeof t>[0])
     );
   if (selectedProgram) breadcrumbParts.push(selectedProgram.name);
+  if (selectedCertType) breadcrumbParts.push(selectedCertType.name_ar);
 
   return (
     <div>
@@ -462,6 +569,13 @@ export default function EvaluatePage() {
           programs={programsForCategory}
           loading={loading}
           onSelect={handleSelectProgram}
+        />
+      )}
+      {step === "certType" && (
+        <CertificateTypeStep
+          certTypes={availableCertTypes}
+          loading={loading}
+          onSelect={handleSelectCertType}
         />
       )}
       {step === "questions" && (
