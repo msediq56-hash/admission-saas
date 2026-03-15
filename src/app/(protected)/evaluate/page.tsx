@@ -14,8 +14,16 @@ import {
   type CustomRequirement,
   type ScholarshipTier,
 } from "@/lib/evaluation-engine";
+import {
+  CountryStep,
+  TypeStep,
+  UniversityStep,
+  CategoryStep,
+  ProgramStep,
+} from "./_components/step-selector";
+import { QuestionWizard } from "./_components/question-wizard";
+import { EvaluationResultView } from "./_components/evaluation-result";
 
-// Steps: country → type → university → category → program → questions → result
 type Step =
   | "country"
   | "type"
@@ -39,57 +47,20 @@ interface Program {
   complexity_level: string;
 }
 
-const categoryColors: Record<string, string> = {
-  foundation: "bg-amber-500/15 text-amber-400",
-  bachelor: "bg-blue-500/15 text-blue-400",
-  master: "bg-purple-500/15 text-purple-400",
-  phd: "bg-emerald-500/15 text-emerald-400",
-  language: "bg-cyan-500/15 text-cyan-400",
-};
-
-const statusStyles: Record<
-  string,
-  { bg: string; text: string; border: string }
-> = {
-  positive: {
-    bg: "bg-green-500/10",
-    text: "text-green-400",
-    border: "border-green-500/30",
-  },
-  conditional: {
-    bg: "bg-yellow-500/10",
-    text: "text-yellow-400",
-    border: "border-yellow-500/30",
-  },
-  negative: {
-    bg: "bg-red-500/10",
-    text: "text-red-400",
-    border: "border-red-500/30",
-  },
-};
-
 export default function EvaluatePage() {
   const t = useTranslations();
   const user = useAuth();
   const supabase = createSupabaseBrowserClient();
 
   const [step, setStep] = useState<Step>("country");
-
-  // All universities (fetched once)
   const [allUniversities, setAllUniversities] = useState<University[]>([]);
-
-  // Selection state
   const [selectedCountry, setSelectedCountry] = useState<string | null>(null);
   const [selectedType, setSelectedType] = useState<string | null>(null);
   const [selectedUniversity, setSelectedUniversity] =
     useState<University | null>(null);
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [selectedProgram, setSelectedProgram] = useState<Program | null>(null);
-
-  // Programs for selected university
   const [programs, setPrograms] = useState<Program[]>([]);
-
-  // Questions
   const [questions, setQuestions] = useState<EvaluationQuestion[]>([]);
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [answers, setAnswers] = useState<EvaluationAnswer[]>([]);
@@ -98,15 +69,10 @@ export default function EvaluatePage() {
     customReqs: CustomRequirement[];
     scholarshipTiers: ScholarshipTier[];
   } | null>(null);
-
-  // Track which question caused early exit to negative result
   const [blockedAtQuestionIndex, setBlockedAtQuestionIndex] = useState<
     number | null
   >(null);
-
-  // Result
   const [result, setResult] = useState<EvaluationResult | null>(null);
-
   const [loading, setLoading] = useState(false);
 
   // Fetch all universities once
@@ -125,7 +91,6 @@ export default function EvaluatePage() {
 
   // Derived data
   const countries = [...new Set(allUniversities.map((u) => u.country))];
-
   const typesForCountry = selectedCountry
     ? [
         ...new Set(
@@ -135,22 +100,18 @@ export default function EvaluatePage() {
         ),
       ]
     : [];
-
   const universitiesForSelection = allUniversities.filter(
     (u) =>
       u.country === selectedCountry &&
       (selectedType ? u.type === selectedType : true)
   );
-
   const categoriesForUniversity = selectedUniversity
     ? [...new Set(programs.map((p) => p.category))]
     : [];
-
   const programsForCategory = selectedCategory
     ? programs.filter((p) => p.category === selectedCategory)
     : [];
 
-  // Fetch programs when university selected
   const fetchPrograms = useCallback(
     async (universityId: string) => {
       setLoading(true);
@@ -211,7 +172,6 @@ export default function EvaluatePage() {
   );
 
   // --- Handlers ---
-
   function handleSelectCountry(country: string) {
     setSelectedCountry(country);
     setStep("type");
@@ -249,7 +209,6 @@ export default function EvaluatePage() {
     ];
     setAnswers(newAnswers);
 
-    // Immediate blocking check
     if (currentQ.isBlocking && value === "no") {
       setBlockedAtQuestionIndex(currentQuestionIndex);
       const evalResult = evaluateAnswers(
@@ -309,7 +268,6 @@ export default function EvaluatePage() {
         }
         break;
       case "result":
-        // Go back to the question that caused blocking (or last question)
         if (questions.length > 0) {
           const goBackTo =
             blockedAtQuestionIndex !== null
@@ -346,13 +304,9 @@ export default function EvaluatePage() {
     setRequirementData(null);
   }
 
-  // Step indicator — simplified to 4 high-level steps
+  // Step indicator
   const stepGroup = (() => {
-    if (
-      step === "country" ||
-      step === "type" ||
-      step === "university"
-    )
+    if (step === "country" || step === "type" || step === "university")
       return 0;
     if (step === "category" || step === "program") return 1;
     if (step === "questions") return 2;
@@ -430,278 +384,47 @@ export default function EvaluatePage() {
         </button>
       )}
 
-      {/* STEP: Select Country */}
       {step === "country" && (
-        <div>
-          <h2 className="text-lg font-semibold text-slate-300 mb-4">
-            {t("evaluation.selectCountry")}
-          </h2>
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {countries.map((country) => (
-              <button
-                key={country}
-                onClick={() => handleSelectCountry(country)}
-                className="rounded-xl border border-white/10 bg-white/5 p-5 text-right text-lg font-semibold text-white transition hover:border-blue-500/50 hover:bg-white/10"
-              >
-                {country}
-              </button>
-            ))}
-          </div>
-        </div>
+        <CountryStep countries={countries} onSelect={handleSelectCountry} />
       )}
-
-      {/* STEP: Select Type */}
       {step === "type" && (
-        <div>
-          <h2 className="text-lg font-semibold text-slate-300 mb-4">
-            {t("evaluation.selectType")}
-          </h2>
-          <div className="grid gap-3 sm:grid-cols-2">
-            {typesForCountry.map((type) => (
-              <button
-                key={type}
-                onClick={() => handleSelectType(type)}
-                className="rounded-xl border border-white/10 bg-white/5 p-5 text-right text-lg font-semibold text-white transition hover:border-blue-500/50 hover:bg-white/10"
-              >
-                {type === "public"
-                  ? t("universities.public")
-                  : t("universities.private")}
-              </button>
-            ))}
-          </div>
-        </div>
+        <TypeStep types={typesForCountry} onSelect={handleSelectType} />
       )}
-
-      {/* STEP: Select University */}
       {step === "university" && (
-        <div>
-          <h2 className="text-lg font-semibold text-slate-300 mb-4">
-            {t("evaluation.selectUniversity")}
-          </h2>
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {universitiesForSelection.map((uni) => (
-              <button
-                key={uni.id}
-                onClick={() => handleSelectUniversity(uni)}
-                className="rounded-xl border border-white/10 bg-white/5 p-6 text-right transition hover:border-blue-500/50 hover:bg-white/10"
-              >
-                <h3 className="text-lg font-bold text-white">{uni.name}</h3>
-                <p className="mt-1 text-sm text-slate-400">
-                  {uni.country}
-                  {" — "}
-                  {uni.type === "public"
-                    ? t("universities.public")
-                    : t("universities.private")}
-                </p>
-              </button>
-            ))}
-          </div>
-        </div>
+        <UniversityStep
+          universities={universitiesForSelection}
+          onSelect={handleSelectUniversity}
+        />
       )}
-
-      {/* STEP: Select Category */}
       {step === "category" && (
-        <div>
-          <h2 className="text-lg font-semibold text-slate-300 mb-4">
-            {t("evaluation.selectCategory")}
-          </h2>
-          {loading ? (
-            <p className="text-slate-400">{t("common.loading")}</p>
-          ) : (
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              {categoriesForUniversity.map((cat) => (
-                <button
-                  key={cat}
-                  onClick={() => handleSelectCategory(cat)}
-                  className={`rounded-xl border border-white/10 bg-white/5 p-5 text-right transition hover:border-blue-500/50 hover:bg-white/10`}
-                >
-                  <span
-                    className={`inline-block rounded-full px-3 py-1 text-sm font-medium ${categoryColors[cat] || "bg-slate-500/15 text-slate-400"}`}
-                  >
-                    {t(`categories.${cat}` as Parameters<typeof t>[0])}
-                  </span>
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
+        <CategoryStep
+          categories={categoriesForUniversity}
+          loading={loading}
+          onSelect={handleSelectCategory}
+        />
       )}
-
-      {/* STEP: Select Program (specific variant) */}
       {step === "program" && (
-        <div>
-          <h2 className="text-lg font-semibold text-slate-300 mb-4">
-            {t("evaluation.selectCertificate")}
-          </h2>
-          {loading ? (
-            <p className="text-slate-400">{t("common.loading")}</p>
-          ) : programsForCategory.length === 0 ? (
-            <p className="text-slate-400">{t("evaluation.noPrograms")}</p>
-          ) : (
-            <div className="grid gap-3 sm:grid-cols-2">
-              {programsForCategory.map((prog) => (
-                <button
-                  key={prog.id}
-                  onClick={() => handleSelectProgram(prog)}
-                  className="rounded-xl border border-white/10 bg-white/5 p-5 text-right transition hover:border-blue-500/50 hover:bg-white/10"
-                >
-                  <h3 className="text-base font-semibold text-white">
-                    {prog.name}
-                  </h3>
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
+        <ProgramStep
+          programs={programsForCategory}
+          loading={loading}
+          onSelect={handleSelectProgram}
+        />
       )}
-
-      {/* STEP: Answer Questions */}
-      {step === "questions" && !loading && questions.length > 0 && (
-        <div>
-          <div className="mt-4">
-            <div className="mb-6 flex items-center justify-between">
-              <span className="text-sm text-slate-400">
-                {t("evaluation.questionOf", {
-                  current: currentQuestionIndex + 1,
-                  total: questions.length,
-                })}
-              </span>
-              <div className="h-1.5 flex-1 mx-4 rounded-full bg-white/10 overflow-hidden">
-                <div
-                  className="h-full rounded-full bg-blue-500 transition-all duration-300"
-                  style={{
-                    width: `${((currentQuestionIndex + 1) / questions.length) * 100}%`,
-                  }}
-                />
-              </div>
-            </div>
-
-            <div className="rounded-xl border border-white/10 bg-white/5 p-8">
-              <h3 className="text-xl font-semibold text-white mb-8">
-                {questions[currentQuestionIndex].text}
-              </h3>
-
-              {questions[currentQuestionIndex].type === "yes_no" ? (
-                <div className="flex gap-4">
-                  <button
-                    onClick={() => handleAnswer("yes")}
-                    className="flex-1 rounded-xl border-2 border-green-500/30 bg-green-500/10 px-6 py-4 text-lg font-semibold text-green-400 transition hover:bg-green-500/20 hover:border-green-500/50"
-                  >
-                    {t("evaluation.yes")}
-                  </button>
-                  <button
-                    onClick={() => handleAnswer("no")}
-                    className="flex-1 rounded-xl border-2 border-red-500/30 bg-red-500/10 px-6 py-4 text-lg font-semibold text-red-400 transition hover:bg-red-500/20 hover:border-red-500/50"
-                  >
-                    {t("evaluation.no")}
-                  </button>
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  {questions[currentQuestionIndex].options?.map((opt) => (
-                    <button
-                      key={opt.value}
-                      onClick={() => handleAnswer(opt.value)}
-                      className="w-full rounded-xl border border-white/10 bg-white/5 px-6 py-4 text-right text-base font-medium text-white transition hover:border-blue-500/50 hover:bg-white/10"
-                    >
-                      {opt.label}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
+      {step === "questions" && (
+        <QuestionWizard
+          questions={questions}
+          currentIndex={currentQuestionIndex}
+          loading={loading}
+          onAnswer={handleAnswer}
+        />
       )}
-
-      {step === "questions" && loading && (
-        <p className="text-slate-400">{t("evaluation.loadingProgram")}</p>
-      )}
-
-      {/* STEP: Result */}
       {step === "result" && result && (
-        <div>
-          <p className="mb-4 text-sm text-slate-500">
-            {breadcrumbParts.join(" › ")}
-          </p>
-
-          <div
-            className={`rounded-xl border ${statusStyles[result.status].border} ${statusStyles[result.status].bg} p-8`}
-          >
-            <div className="mb-4">
-              <span
-                className={`inline-block rounded-full px-4 py-1.5 text-sm font-bold ${statusStyles[result.status].text} ${statusStyles[result.status].bg} border ${statusStyles[result.status].border}`}
-              >
-                {result.title}
-              </span>
-            </div>
-
-            <p className="text-lg text-white font-medium mb-6">
-              {result.message}
-            </p>
-
-            {result.conditions.length > 0 && (
-              <div className="mb-6">
-                <h4 className="text-sm font-semibold text-slate-300 mb-3">
-                  {t("evaluation.conditions")}
-                </h4>
-                <ul className="space-y-2">
-                  {result.conditions.map((c, i) => (
-                    <li
-                      key={i}
-                      className="flex items-start gap-2 text-sm text-yellow-300/90"
-                    >
-                      <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-yellow-400" />
-                      <span>
-                        <span className="font-medium">{c.category}:</span>{" "}
-                        {c.description}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-
-            {result.scholarshipInfo && (
-              <div className="mb-6 rounded-lg bg-white/5 border border-white/10 p-4">
-                <h4 className="text-sm font-semibold text-slate-300 mb-1">
-                  {t("evaluation.scholarship")}
-                </h4>
-                <p className="text-sm text-green-400 font-medium">
-                  {result.scholarshipInfo}
-                </p>
-              </div>
-            )}
-
-            {result.notes.length > 0 && (
-              <div>
-                <h4 className="text-sm font-semibold text-slate-300 mb-2">
-                  {t("evaluation.notes")}
-                </h4>
-                {result.notes.map((note, i) => (
-                  <p key={i} className="text-sm text-slate-400">
-                    {note}
-                  </p>
-                ))}
-              </div>
-            )}
-          </div>
-
-          <div className="mt-6 flex gap-3">
-            <button
-              onClick={handleReset}
-              className="rounded-xl bg-blue-600 px-6 py-3 text-sm font-semibold text-white transition hover:bg-blue-500"
-            >
-              {t("evaluation.newEvaluation")}
-            </button>
-            <button
-              onClick={handleBack}
-              className="rounded-xl border border-white/10 bg-white/5 px-6 py-3 text-sm font-semibold text-slate-300 transition hover:bg-white/10"
-            >
-              {t("evaluation.back")}
-            </button>
-          </div>
-        </div>
+        <EvaluationResultView
+          result={result}
+          breadcrumb={breadcrumbParts.join(" › ")}
+          onReset={handleReset}
+          onBack={handleBack}
+        />
       )}
     </div>
   );
