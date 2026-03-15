@@ -16,6 +16,8 @@ export interface EvaluationQuestion {
   customEffect?: "blocks_admission" | "makes_conditional";
   negativeMessage?: string;
   positiveMessage?: string;
+  /** Per-option effects for select questions */
+  optionEffects?: Record<string, { effect: string; message: string | null }>;
 }
 
 export interface EvaluationAnswer {
@@ -68,6 +70,7 @@ export interface CustomRequirement {
   negative_message?: string;
   positive_message?: string;
   sort_order: number;
+  option_effects?: Record<string, { effect: string; message: string | null }> | null;
 }
 
 export interface ScholarshipTier {
@@ -252,6 +255,9 @@ export function buildQuestionsFromRequirements(
         label: opt,
         value: opt,
       }));
+    }
+    if (cr.option_effects) {
+      q.optionEffects = cr.option_effects as Record<string, { effect: string; message: string | null }>;
     }
     questions.push(q);
   }
@@ -447,6 +453,25 @@ export function evaluateAnswers(
 
     // --- Custom requirement questions ---
     if (q.customEffect) {
+      // For select questions with per-option effects, use the specific option's effect
+      if (q.type === "select" && q.optionEffects) {
+        const selectedEffect = q.optionEffects[answer];
+        if (selectedEffect) {
+          if (selectedEffect.effect === "blocks_admission") {
+            if (selectedEffect.message) negatives.push(selectedEffect.message);
+          } else if (selectedEffect.effect === "makes_conditional") {
+            if (selectedEffect.message) {
+              conditions.push({
+                category: "شرط إضافي",
+                description: selectedEffect.message,
+              });
+            }
+          }
+          // "none" = no effect, skip
+        }
+        continue; // Skip the default effect handling
+      }
+
       if (q.customEffect === "blocks_admission") {
         if (answer === "no" && q.negativeMessage) {
           negatives.push(q.negativeMessage);

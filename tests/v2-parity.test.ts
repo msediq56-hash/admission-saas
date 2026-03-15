@@ -763,6 +763,70 @@ test("تخصص بدون متطلبات مواد → مؤهل مباشرة", () =
 });
 
 // ============================================================
+// option_effects — per-option effects for select questions (3 cases)
+// ============================================================
+console.log("\n═══ تأثيرات الخيارات المخصصة (option_effects) ═══");
+
+const OPTION_EFFECTS_BASE_REQ: Requirement = { requires_hs: true };
+
+const OPTION_EFFECTS_CUSTOM: CustomRequirement[] = [
+  {
+    id: "oe1",
+    question_text: "ما هو مستوى IELTS للطالب؟",
+    question_type: "select",
+    options: ["6.5 أو أعلى", "5.0 - 6.4", "أقل من 5.0"],
+    effect: "makes_conditional", // default fallback, overridden by option_effects
+    sort_order: 1,
+    option_effects: {
+      "6.5 أو أعلى": { effect: "none", message: null },
+      "5.0 - 6.4": { effect: "makes_conditional", message: "يحتاج فصل تحضيري للغة الإنجليزية" },
+      "أقل من 5.0": { effect: "blocks_admission", message: "مستوى اللغة غير كافي للقبول" },
+    },
+  },
+];
+
+// Case 37
+test("سؤال اختيار مع option_effects — خيار يجعل مشروط", () => {
+  const questions = buildQuestionsFromRequirements(OPTION_EFFECTS_BASE_REQ, OPTION_EFFECTS_CUSTOM, []);
+  const answers = [
+    { questionId: questions[0].id, value: "yes" }, // HS
+    { questionId: questions[1].id, value: "5.0 - 6.4" }, // conditional option
+  ];
+  const result = evaluateAnswers(answers, OPTION_EFFECTS_BASE_REQ, OPTION_EFFECTS_CUSTOM, [], questions);
+  assert.strictEqual(result.status, "conditional");
+  assert.ok(
+    result.conditions.some(c => c.description.includes("فصل تحضيري")),
+    `يجب أن يحتوي شرط الفصل التحضيري, حصلنا: ${JSON.stringify(result.conditions)}`
+  );
+});
+
+// Case 38
+test("سؤال اختيار مع option_effects — خيار يحظر القبول", () => {
+  const questions = buildQuestionsFromRequirements(OPTION_EFFECTS_BASE_REQ, OPTION_EFFECTS_CUSTOM, []);
+  const answers = [
+    { questionId: questions[0].id, value: "yes" }, // HS
+    { questionId: questions[1].id, value: "أقل من 5.0" }, // blocking option
+  ];
+  const result = evaluateAnswers(answers, OPTION_EFFECTS_BASE_REQ, OPTION_EFFECTS_CUSTOM, [], questions);
+  assert.strictEqual(result.status, "negative");
+  assert.ok(
+    result.message.includes("مستوى اللغة غير كافي"),
+    `الرسالة يجب أن تذكر مستوى اللغة, حصلنا: ${result.message}`
+  );
+});
+
+// Case 39
+test("سؤال اختيار مع option_effects — خيار بدون تأثير (none)", () => {
+  const questions = buildQuestionsFromRequirements(OPTION_EFFECTS_BASE_REQ, OPTION_EFFECTS_CUSTOM, []);
+  const answers = [
+    { questionId: questions[0].id, value: "yes" }, // HS
+    { questionId: questions[1].id, value: "6.5 أو أعلى" }, // none effect
+  ];
+  const result = evaluateAnswers(answers, OPTION_EFFECTS_BASE_REQ, OPTION_EFFECTS_CUSTOM, [], questions);
+  assert.strictEqual(result.status, "positive");
+});
+
+// ============================================================
 // Summary
 // ============================================================
 console.log("\n════════════════════════════════════════");

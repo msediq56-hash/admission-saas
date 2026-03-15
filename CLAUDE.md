@@ -42,7 +42,7 @@ Core tables with structured fields + JSON payload fields for complex logic:
 - `universities` — per tenant, with country, type, visibility
 - `programs` — per university, with category, complexity_level, metadata JSON
 - `requirements` — per program, structured fields (requires_hs, ielts_min, sat_required, etc.)
-- `custom_requirements` — per program, structured custom conditions (question + effect + message)
+- `custom_requirements` — per program, structured custom conditions (question + effect + message + option_effects jsonb for per-option effects in select questions)
 - `scholarship_tiers` — optional, for GPA-based scholarship logic
 - `certificate_types` — certificate templates (arabic, british, american, IB) with grading systems and subject rules
 - `majors` — specializations within a program (e.g. 18 bachelor majors at Constructor)
@@ -80,7 +80,8 @@ a_level_subjects_min, a_level_min_grade, a_level_requires_core
 ### custom_requirements table (structured custom conditions)
 ```
 question_text, question_type (yes_no/select), effect (blocks_admission/makes_conditional),
-negative_message, positive_message, sort_order
+negative_message, positive_message, sort_order,
+option_effects (jsonb) — per-option effects for select questions: { "option_label": { "effect": "none|makes_conditional|blocks_admission", "message": "..." } }
 ```
 
 ## Certificate types system
