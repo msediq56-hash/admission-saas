@@ -169,12 +169,10 @@ function getVisibleFields(certTypeSlug: string | null, programCategory: string):
       fields.add("sat");
       break;
     case "british":
-      fields.add("hs_12years");
       fields.add("a_levels");
       fields.add("sat");
       break;
     case "ib":
-      fields.add("hs_12years");
       fields.add("ib");
       fields.add("sat");
       break;
@@ -688,24 +686,23 @@ export default function EditProgramPage({
         setSaving(false);
       }
 
-      // Replace universal tab with new cert-specific tab (same data, different cert type)
-      const convertedTab: CertTypeTab = {
-        certTypeId: ct.id,
-        certTypeName: ct.name_ar,
-        reqRowId: universalTab.reqRowId,
-        reqs: { ...universalTab.reqs },
-        customReqs: universalTab.customReqs.map((cr) => ({
-          ...cr,
-          certificate_type_id: ct.id,
-        })),
-      };
+      // Also update custom_requirements to match the new cert type
+      if (universalTab.customReqs.length > 0) {
+        for (const cr of universalTab.customReqs) {
+          if (cr.id) {
+            await supabase
+              .from("custom_requirements")
+              .update({ certificate_type_id: certTypeId })
+              .eq("id", cr.id);
+          }
+        }
+      }
 
-      setTabs([convertedTab]);
-      setActiveTabIndex(0);
-      setIsUniversal(false);
+      // Reload data from DB to ensure state is fully consistent
       setShowCertTypePicker(false);
       setToast(`تم نسخ الشروط العامة إلى تبويب ${ct.name_ar}`);
       setTimeout(() => setToast(""), 3000);
+      await loadData();
     } else {
       // Already in multi-cert mode — add new tab with empty defaults
       const newTab: CertTypeTab = {
@@ -1303,8 +1300,8 @@ export default function EditProgramPage({
                     )}
                   </div>
                 )}
-                {/* Show legacy IELTS toggle if language cert is NOT enabled */}
-                {!reqs.requires_language_cert && (
+                {/* Legacy IELTS toggle — only shown in universal tab when language cert is NOT enabled */}
+                {!reqs.requires_language_cert && !activeCertSlug && (
                   <>
                     <Toggle label={t("admin.requiresIELTS")} checked={reqs.requires_ielts} onChange={(v) => updateReq("requires_ielts", v)} />
                     {reqs.requires_ielts && (
