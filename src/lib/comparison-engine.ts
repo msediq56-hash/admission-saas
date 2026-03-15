@@ -16,6 +16,8 @@ export interface StudentProfile {
   certificateType: "arabic" | "british";
   aLevelCount: number | null;
   aLevelCCount: number | null;
+  asLevelCount?: number | null;
+  oLevelCount?: number | null;
   dynamicAnswers?: Record<string, string | boolean | number>;
   // Language certificate fields
   hasLanguageCert?: boolean;
@@ -121,6 +123,24 @@ export function evaluateProfileAgainstProgram(
       if (aCCount < needed) {
         negatives.push("درجات أقل من C — جرّب السنة التأسيسية");
       }
+    }
+  }
+
+  // --- AS Level checks (field-driven from requirements) ---
+  if (req.requires_as_levels && profile.certificateType === "british") {
+    const needed = req.as_level_subjects_min || 3;
+    const asCount = profile.asLevelCount ?? 0;
+    if (asCount < needed) {
+      negatives.push(`غير مؤهل — يحتاج ${needed} مواد AS Level`);
+    }
+  }
+
+  // --- O Level / GCSE checks (field-driven from requirements) ---
+  if (req.requires_o_levels && profile.certificateType === "british") {
+    const needed = req.o_level_subjects_min || 5;
+    const oCount = profile.oLevelCount ?? 0;
+    if (oCount < needed) {
+      negatives.push(`غير مؤهل — يحتاج ${needed} مواد O Level / GCSE`);
     }
   }
 

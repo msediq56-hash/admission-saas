@@ -971,6 +971,61 @@ test("شهادة لغة — Duolingo بدرجة 95 < 110 → غير مؤهل", (
 });
 
 // ============================================================
+// AS Level / O Level Tests
+// ============================================================
+console.log("\n═══ AS Level و O Level ═══");
+
+const AS_O_LEVEL_PROGRAM = makeEntry({
+  programName: "بكالوريوس بريطاني (AS+O)",
+  universityName: "جامعة تجريبية",
+  category: "bachelor",
+  certificateTypeSlug: "british",
+  requirements: {
+    requires_a_levels: true,
+    a_level_subjects_min: 3,
+    a_level_min_grade: "C",
+    requires_as_levels: true,
+    as_level_subjects_min: 2,
+    as_level_min_grade: "C",
+    as_level_effect: "blocks_admission",
+    requires_o_levels: true,
+    o_level_subjects_min: 5,
+    o_level_min_grade: "C",
+    o_level_effect: "blocks_admission",
+  },
+});
+
+// Case 44: AS Level — has enough subjects → positive (with all other reqs met)
+test("AS Level — لديه عدد كاف + درجات كافية → مؤهل", () => {
+  const profile: StudentProfile = {
+    ...BASE_BRITISH,
+    aLevelCount: 3,
+    aLevelCCount: 3,
+    asLevelCount: 2,
+    oLevelCount: 5,
+  };
+  const result = evaluateProfileAgainstProgram(profile, AS_O_LEVEL_PROGRAM);
+  assert.strictEqual(result.status, "positive");
+});
+
+// Case 45: O Level — missing subjects → negative
+test("O Level — عدد مواد غير كاف → غير مؤهل", () => {
+  const profile: StudentProfile = {
+    ...BASE_BRITISH,
+    aLevelCount: 3,
+    aLevelCCount: 3,
+    asLevelCount: 2,
+    oLevelCount: 3, // needs 5
+  };
+  const result = evaluateProfileAgainstProgram(profile, AS_O_LEVEL_PROGRAM);
+  assert.strictEqual(result.status, "negative");
+  assert.ok(
+    result.reason.includes("O Level"),
+    `السبب يجب أن يذكر O Level, حصلنا: ${result.reason}`
+  );
+});
+
+// ============================================================
 // Summary
 // ============================================================
 console.log("\n════════════════════════════════════════");

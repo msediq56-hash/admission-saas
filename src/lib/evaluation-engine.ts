@@ -65,6 +65,16 @@ export interface Requirement {
   a_level_min_grade?: string;
   a_level_requires_core?: boolean;
   a_level_effect?: string;
+  // AS Level fields (British certificates)
+  requires_as_levels?: boolean;
+  as_level_subjects_min?: number;
+  as_level_min_grade?: string;
+  as_level_effect?: string;
+  // O Level / GCSE fields (British certificates)
+  requires_o_levels?: boolean;
+  o_level_subjects_min?: number;
+  o_level_min_grade?: string;
+  o_level_effect?: string;
   // IB fields (International Baccalaureate)
   requires_ib?: boolean;
   ib_min_points?: number;
@@ -313,6 +323,50 @@ export function buildQuestionsFromRequirements(
         type: "yes_no",
         isBlocking: true,
         sourceField: "requires_a_levels_core",
+      });
+    }
+  }
+
+  // 10b. AS Level requirements (British certificates)
+  if (req.requires_as_levels) {
+    const minSubjects = req.as_level_subjects_min || 3;
+    questions.push({
+      id: `q_${qIndex++}`,
+      text: `هل لدى الطالب ${minSubjects} مواد AS Level؟`,
+      type: "yes_no",
+      isBlocking: true,
+      sourceField: "requires_as_levels_count",
+    });
+
+    if (req.as_level_min_grade) {
+      questions.push({
+        id: `q_${qIndex++}`,
+        text: `هل جميع مواد AS Level بدرجة ${req.as_level_min_grade} أو أعلى؟`,
+        type: "yes_no",
+        isBlocking: req.as_level_effect === "blocks_admission",
+        sourceField: "requires_as_levels_grade",
+      });
+    }
+  }
+
+  // 10c. O Level / GCSE requirements (British certificates)
+  if (req.requires_o_levels) {
+    const minSubjects = req.o_level_subjects_min || 5;
+    questions.push({
+      id: `q_${qIndex++}`,
+      text: `هل لدى الطالب ${minSubjects} مواد O Level / GCSE؟`,
+      type: "yes_no",
+      isBlocking: true,
+      sourceField: "requires_o_levels_count",
+    });
+
+    if (req.o_level_min_grade) {
+      questions.push({
+        id: `q_${qIndex++}`,
+        text: `هل جميع مواد O Level / GCSE بدرجة ${req.o_level_min_grade} أو أعلى؟`,
+        type: "yes_no",
+        isBlocking: req.o_level_effect === "blocks_admission",
+        sourceField: "requires_o_levels_grade",
       });
     }
   }
@@ -616,6 +670,56 @@ export function evaluateAnswers(
         case "requires_a_levels_core":
           if (answer === "no") {
             negatives.push("لا يستوفي شرط المواد الأساسية");
+          }
+          break;
+
+        case "requires_as_levels_count":
+          if (answer === "no") {
+            const asMin = req.as_level_subjects_min || 3;
+            negatives.push(
+              `غير مؤهل — يحتاج ${asMin} مواد AS Level`
+            );
+          }
+          break;
+
+        case "requires_as_levels_grade":
+          if (answer === "no") {
+            const asEffect = req.as_level_effect || "blocks_admission";
+            if (asEffect === "blocks_admission") {
+              negatives.push(
+                `درجات AS Level أقل من ${req.as_level_min_grade}`
+              );
+            } else {
+              conditions.push({
+                category: "AS Level",
+                description: `درجات AS Level أقل من ${req.as_level_min_grade}`,
+              });
+            }
+          }
+          break;
+
+        case "requires_o_levels_count":
+          if (answer === "no") {
+            const oMin = req.o_level_subjects_min || 5;
+            negatives.push(
+              `غير مؤهل — يحتاج ${oMin} مواد O Level / GCSE`
+            );
+          }
+          break;
+
+        case "requires_o_levels_grade":
+          if (answer === "no") {
+            const oEffect = req.o_level_effect || "blocks_admission";
+            if (oEffect === "blocks_admission") {
+              negatives.push(
+                `درجات O Level / GCSE أقل من ${req.o_level_min_grade}`
+              );
+            } else {
+              conditions.push({
+                category: "O Level / GCSE",
+                description: `درجات O Level / GCSE أقل من ${req.o_level_min_grade}`,
+              });
+            }
           }
           break;
 

@@ -61,6 +61,16 @@ interface Requirements {
   a_level_min_grade: string | null;
   a_level_requires_core: boolean;
   a_level_effect: string | null;
+  // AS Level fields (British certificates)
+  requires_as_levels: boolean;
+  as_level_subjects_min: number | null;
+  as_level_min_grade: string | null;
+  as_level_effect: string | null;
+  // O Level / GCSE fields (British certificates)
+  requires_o_levels: boolean;
+  o_level_subjects_min: number | null;
+  o_level_min_grade: string | null;
+  o_level_effect: string | null;
   // IB fields (International Baccalaureate)
   requires_ib: boolean;
   ib_min_points: number | null;
@@ -129,6 +139,14 @@ const defaultReqs: Requirements = {
   a_level_min_grade: null,
   a_level_requires_core: false,
   a_level_effect: null,
+  requires_as_levels: false,
+  as_level_subjects_min: null,
+  as_level_min_grade: null,
+  as_level_effect: null,
+  requires_o_levels: false,
+  o_level_subjects_min: null,
+  o_level_min_grade: null,
+  o_level_effect: null,
   requires_ib: false,
   ib_min_points: null,
   ib_effect: null,
@@ -141,18 +159,14 @@ const defaultReqs: Requirements = {
 /*  Field visibility per certificate type                              */
 /* ------------------------------------------------------------------ */
 
-type FieldGroup = "hs_12years" | "gpa" | "language_cert" | "sat" | "entrance_exam" | "portfolio" | "research_plan" | "bachelor" | "a_levels" | "ib";
+type FieldGroup = "hs_12years" | "gpa" | "language_cert" | "sat" | "entrance_exam" | "portfolio" | "research_plan" | "bachelor" | "a_levels" | "as_levels" | "o_levels" | "ib";
 
 function getVisibleFields(certTypeSlug: string | null, programCategory: string): Set<FieldGroup> {
-  // Universal (null slug) → show everything
-  if (!certTypeSlug) {
-    return new Set<FieldGroup>(["hs_12years", "gpa", "language_cert", "sat", "entrance_exam", "portfolio", "research_plan", "bachelor", "a_levels", "ib"]);
-  }
-
   const fields = new Set<FieldGroup>();
 
-  // Common fields
+  // Common fields for ALL cert types (including universal)
   fields.add("language_cert");
+  fields.add("sat");
   fields.add("entrance_exam");
   fields.add("portfolio");
   fields.add("research_plan");
@@ -162,31 +176,35 @@ function getVisibleFields(certTypeSlug: string | null, programCategory: string):
     fields.add("bachelor");
   }
 
+  // Universal (null slug) → only common fields above
+  if (!certTypeSlug) {
+    return fields;
+  }
+
   switch (certTypeSlug) {
     case "arabic":
       fields.add("hs_12years");
       fields.add("gpa");
-      fields.add("sat");
       break;
     case "british":
       fields.add("a_levels");
-      fields.add("sat");
+      fields.add("as_levels");
+      fields.add("o_levels");
       break;
     case "ib":
       fields.add("ib");
-      fields.add("sat");
       break;
     case "american":
       fields.add("hs_12years");
       fields.add("gpa");
-      fields.add("sat");
       break;
     default:
       // Unknown cert type → show everything
       fields.add("hs_12years");
       fields.add("gpa");
-      fields.add("sat");
       fields.add("a_levels");
+      fields.add("as_levels");
+      fields.add("o_levels");
       fields.add("ib");
       fields.add("bachelor");
       break;
@@ -223,6 +241,14 @@ function mapRowToReqs(row: Record<string, unknown>): Requirements {
     a_level_min_grade: (row.a_level_min_grade as string | null) ?? null,
     a_level_requires_core: (row.a_level_requires_core as boolean) ?? false,
     a_level_effect: (row.a_level_effect as string | null) ?? null,
+    requires_as_levels: (row.requires_as_levels as boolean) ?? false,
+    as_level_subjects_min: (row.as_level_subjects_min as number | null) ?? null,
+    as_level_min_grade: (row.as_level_min_grade as string | null) ?? null,
+    as_level_effect: (row.as_level_effect as string | null) ?? null,
+    requires_o_levels: (row.requires_o_levels as boolean) ?? false,
+    o_level_subjects_min: (row.o_level_subjects_min as number | null) ?? null,
+    o_level_min_grade: (row.o_level_min_grade as string | null) ?? null,
+    o_level_effect: (row.o_level_effect as string | null) ?? null,
     requires_ib: (row.requires_ib as boolean) ?? false,
     ib_min_points: (row.ib_min_points as number | null) ?? null,
     ib_effect: (row.ib_effect as string | null) ?? null,
@@ -1382,6 +1408,72 @@ export default function EditProgramPage({
                       </div>
                     </div>
                     <Toggle label={t("admin.aLevelRequiresCore")} checked={reqs.a_level_requires_core} onChange={(v) => updateReq("a_level_requires_core", v)} />
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* --- AS Level (British certificates) --- */}
+            {visibleFields.has("as_levels") && (
+              <div className="border-t border-white/10 pt-3 mt-3">
+                <Toggle label={t("admin.requiresASLevels")} checked={reqs.requires_as_levels} onChange={(v) => updateReq("requires_as_levels", v)} />
+                {reqs.requires_as_levels && (
+                  <div className="mr-8 mt-2 space-y-3">
+                    <div className="grid gap-4 sm:grid-cols-3">
+                      <div>
+                        <label className="block text-xs text-slate-400 mb-1">{t("admin.asLevelSubjectsMin")}</label>
+                        <input type="number" min="1" max="10" value={reqs.as_level_subjects_min ?? ""} onChange={(e) => updateReq("as_level_subjects_min", e.target.value ? Number(e.target.value) : null)} className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white focus:border-blue-500 focus:outline-none" />
+                      </div>
+                      <div>
+                        <label className="block text-xs text-slate-400 mb-1">{t("admin.asLevelMinGrade")}</label>
+                        <select value={reqs.as_level_min_grade || ""} onChange={(e) => updateReq("as_level_min_grade", e.target.value || null)} className="w-full rounded-lg border border-white/10 bg-[#0f1c2e] px-3 py-2 text-sm text-white focus:border-blue-500 focus:outline-none">
+                          <option value="" className="bg-[#0f1c2e] text-white">—</option>
+                          {["A", "B", "C", "D", "E"].map((g) => (
+                            <option key={g} value={g} className="bg-[#0f1c2e] text-white">{g}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-xs text-slate-400 mb-1">{t("admin.asLevelEffect")}</label>
+                        <select value={reqs.as_level_effect || "blocks_admission"} onChange={(e) => updateReq("as_level_effect", e.target.value)} className="w-full rounded-lg border border-white/10 bg-[#0f1c2e] px-3 py-2 text-sm text-white focus:border-blue-500 focus:outline-none">
+                          <option value="blocks_admission" className="bg-[#0f1c2e] text-white">{t("admin.blocks")}</option>
+                          <option value="makes_conditional" className="bg-[#0f1c2e] text-white">{t("admin.conditional")}</option>
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* --- O Level / GCSE (British certificates) --- */}
+            {visibleFields.has("o_levels") && (
+              <div className="border-t border-white/10 pt-3 mt-3">
+                <Toggle label={t("admin.requiresOLevels")} checked={reqs.requires_o_levels} onChange={(v) => updateReq("requires_o_levels", v)} />
+                {reqs.requires_o_levels && (
+                  <div className="mr-8 mt-2 space-y-3">
+                    <div className="grid gap-4 sm:grid-cols-3">
+                      <div>
+                        <label className="block text-xs text-slate-400 mb-1">{t("admin.oLevelSubjectsMin")}</label>
+                        <input type="number" min="1" max="10" value={reqs.o_level_subjects_min ?? ""} onChange={(e) => updateReq("o_level_subjects_min", e.target.value ? Number(e.target.value) : null)} className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white focus:border-blue-500 focus:outline-none" />
+                      </div>
+                      <div>
+                        <label className="block text-xs text-slate-400 mb-1">{t("admin.oLevelMinGrade")}</label>
+                        <select value={reqs.o_level_min_grade || ""} onChange={(e) => updateReq("o_level_min_grade", e.target.value || null)} className="w-full rounded-lg border border-white/10 bg-[#0f1c2e] px-3 py-2 text-sm text-white focus:border-blue-500 focus:outline-none">
+                          <option value="" className="bg-[#0f1c2e] text-white">—</option>
+                          {["A*", "A", "B", "C", "D", "E", "F", "G"].map((g) => (
+                            <option key={g} value={g} className="bg-[#0f1c2e] text-white">{g}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-xs text-slate-400 mb-1">{t("admin.oLevelEffect")}</label>
+                        <select value={reqs.o_level_effect || "blocks_admission"} onChange={(e) => updateReq("o_level_effect", e.target.value)} className="w-full rounded-lg border border-white/10 bg-[#0f1c2e] px-3 py-2 text-sm text-white focus:border-blue-500 focus:outline-none">
+                          <option value="blocks_admission" className="bg-[#0f1c2e] text-white">{t("admin.blocks")}</option>
+                          <option value="makes_conditional" className="bg-[#0f1c2e] text-white">{t("admin.conditional")}</option>
+                        </select>
+                      </div>
+                    </div>
                   </div>
                 )}
               </div>
