@@ -25,7 +25,7 @@ export function Sidebar({ user }: { user: AuthUser }) {
 
   if (canManageUsers(user.role)) {
     navItems.push(
-      { href: "/dashboard", label: t("sidebar.dashboard") },
+      { href: "/users", label: t("sidebar.users") },
     );
   }
 
