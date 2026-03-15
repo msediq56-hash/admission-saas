@@ -12,6 +12,19 @@ export async function PATCH(
   const body = await request.json();
   const { program, requirements, custom_requirements } = body;
 
+  // Look up tenant_id from the program (needed for inserts)
+  const { data: progRow } = await supabase
+    .from("programs")
+    .select("tenant_id")
+    .eq("id", programId)
+    .single();
+
+  if (!progRow) {
+    return NextResponse.json({ error: "Program not found" }, { status: 404 });
+  }
+
+  const tenantId = progRow.tenant_id;
+
   // Update program info
   if (program) {
     const updates: Record<string, unknown> = {};
@@ -85,9 +98,10 @@ export async function PATCH(
           })
           .eq("id", cr.id);
       } else {
-        // Insert new — include certificate_type_id
+        // Insert new — include tenant_id and certificate_type_id
         await supabase.from("custom_requirements").insert({
           program_id: programId,
+          tenant_id: tenantId,
           question_text: cr.question_text,
           question_type: cr.question_type || "yes_no",
           effect: cr.effect || "blocks_admission",

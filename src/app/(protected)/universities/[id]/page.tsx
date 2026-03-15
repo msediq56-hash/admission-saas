@@ -52,12 +52,33 @@ export default async function UniversityDetailPage({
     notFound();
   }
 
-  const { data: programs } = await supabase
+  // Get user role to decide whether to show inactive programs
+  const {
+    data: { user: authUser },
+  } = await supabase.auth.getUser();
+  let userRole = "advisor";
+  if (authUser) {
+    const { data: dbUser } = await supabase
+      .from("users")
+      .select("role")
+      .eq("id", authUser.id)
+      .single();
+    if (dbUser) userRole = dbUser.role;
+  }
+
+  const isAdminOrOwner = userRole === "admin" || userRole === "owner";
+
+  let programsQuery = supabase
     .from("programs")
-    .select("id, name, category, complexity_level, sort_order, requirements(*)")
-    .eq("university_id", id)
-    .eq("is_active", true)
-    .order("sort_order");
+    .select("id, name, category, complexity_level, sort_order, is_active, requirements(*)")
+    .eq("university_id", id);
+
+  // Advisors only see active programs
+  if (!isAdminOrOwner) {
+    programsQuery = programsQuery.eq("is_active", true);
+  }
+
+  const { data: programs } = await programsQuery.order("sort_order");
 
   return (
     <div>
@@ -103,6 +124,11 @@ export default async function UniversityDetailPage({
               <div className="flex flex-wrap items-start gap-3">
                 <h3 className="text-lg font-semibold text-white flex-1">
                   {program.name}
+                  {program.is_active === false && (
+                    <span className="mr-2 inline-block rounded-full bg-red-500/15 px-2 py-0.5 text-xs font-medium text-red-400">
+                      {t("admin.programInactive")}
+                    </span>
+                  )}
                 </h3>
                 <AdminEditButton
                   href={`/universities/${id}/programs/${program.id}/edit`}
