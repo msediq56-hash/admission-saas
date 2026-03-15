@@ -77,6 +77,8 @@ export async function PATCH(
             negative_message: cr.negative_message,
             positive_message: cr.positive_message,
             sort_order: cr.sort_order,
+            options: cr.options || null,
+            option_effects: cr.option_effects || null,
           })
           .eq("id", cr.id);
       } else {
@@ -89,6 +91,8 @@ export async function PATCH(
           negative_message: cr.negative_message,
           positive_message: cr.positive_message,
           sort_order: cr.sort_order || 0,
+          options: cr.options || null,
+          option_effects: cr.option_effects || null,
         });
       }
     }
