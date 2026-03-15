@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getTranslations } from "next-intl/server";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
+import { AdminEditButton, AdminAddButton } from "@/components/admin-actions";
 
 function buildRequirementsSummary(req: Record<string, unknown>): string {
   const parts: string[] = [];
@@ -69,7 +70,19 @@ export default async function UniversityDetailPage({
       </Link>
 
       <div className="mb-8">
-        <h1 className="text-2xl font-bold text-white">{university.name}</h1>
+        <div className="flex items-center justify-between">
+          <h1 className="text-2xl font-bold text-white">{university.name}</h1>
+          <div className="flex items-center gap-3">
+            <AdminEditButton
+              href={`/universities/${id}/edit`}
+              label={t("common.edit")}
+            />
+            <AdminAddButton
+              href={`/universities/${id}/programs/new`}
+              label={t("admin.addProgram")}
+            />
+          </div>
+        </div>
         <p className="mt-2 text-slate-400">
           {university.country}
           {" — "}
@@ -91,6 +104,10 @@ export default async function UniversityDetailPage({
                 <h3 className="text-lg font-semibold text-white flex-1">
                   {program.name}
                 </h3>
+                <AdminEditButton
+                  href={`/universities/${id}/programs/${program.id}/edit`}
+                  label={t("common.edit")}
+                />
                 <span
                   className={`inline-block rounded-full px-3 py-0.5 text-xs font-medium ${categoryColors[program.category] || "bg-slate-500/15 text-slate-400"}`}
                 >
@@ -113,12 +130,12 @@ export default async function UniversityDetailPage({
                     </span>
                     {buildRequirementsSummary(req)}
                   </p>
-                  {req.result_notes && (
+                  {typeof req.result_notes === "string" && req.result_notes && (
                     <p className="text-sm text-slate-400">
                       <span className="text-slate-500">
                         {t("universities.notes")}:{" "}
                       </span>
-                      {String(req.result_notes)}
+                      {req.result_notes}
                     </p>
                   )}
                 </div>

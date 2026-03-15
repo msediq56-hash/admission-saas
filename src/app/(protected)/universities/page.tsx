@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { getTranslations } from "next-intl/server";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
+import { AdminAddButton } from "@/components/admin-actions";
 
 export default async function UniversitiesPage() {
   const supabase = await createSupabaseServerClient();
@@ -14,9 +15,12 @@ export default async function UniversitiesPage() {
 
   return (
     <div>
-      <h1 className="text-2xl font-bold text-white">
-        {t("universities.title")}
-      </h1>
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-bold text-white">
+          {t("universities.title")}
+        </h1>
+        <AdminAddButton href="/universities/new" label={t("admin.addUniversity")} />
+      </div>
 
       {!universities?.length ? (
         <p className="mt-6 text-slate-400">{t("universities.noUniversities")}</p>
