@@ -212,6 +212,7 @@ export default function EditProgramPage({
   const [majorsExpanded, setMajorsExpanded] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [toast, setToast] = useState("");
 
   if (!canEditUniversities(user.role)) {
     router.replace(`/universities/${universityId}`);
@@ -285,30 +286,11 @@ export default function EditProgramPage({
       setTabs([tabData]);
       setIsUniversal(true);
     } else {
-      // Multi-cert mode — one tab per cert type, with universal tab first if it exists
+      // Multi-cert mode — one tab per cert type (no universal tab)
       const certTypeMap = new Map(
         allCertTypes.map((ct: { id: string; slug: string; name_ar: string; sort_order: number }) => [ct.id, ct])
       );
 
-      const newTabs: CertTypeTab[] = [];
-
-      // 1. If a universal row exists (certificate_type_id = null), include it as the FIRST tab
-      const universalRow = reqRows.find(
-        (r: Record<string, unknown>) => r.certificate_type_id === null
-      );
-      if (universalRow) {
-        newTabs.push({
-          certTypeId: null,
-          certTypeName: "شروط عامة (لجميع الشهادات)",
-          reqRowId: (universalRow.id as string) || null,
-          reqs: mapRowToReqs(universalRow),
-          customReqs: customRows
-            .filter((cr: Record<string, unknown>) => !cr.certificate_type_id)
-            .map(mapCustomRow),
-        });
-      }
-
-      // 2. Then add cert-specific tabs sorted by cert type sort_order
       const certSpecificRows = reqRows
         .filter((r: Record<string, unknown>) => r.certificate_type_id !== null)
         .sort((a: Record<string, unknown>, b: Record<string, unknown>) => {
@@ -317,18 +299,20 @@ export default function EditProgramPage({
           return aSort - bSort;
         });
 
-      for (const row of certSpecificRows) {
-        const ctId = row.certificate_type_id as string;
-        newTabs.push({
-          certTypeId: ctId,
-          certTypeName: certTypeMap.get(ctId)?.name_ar || "—",
-          reqRowId: row.id as string,
-          reqs: mapRowToReqs(row),
-          customReqs: customRows
-            .filter((cr: Record<string, unknown>) => cr.certificate_type_id === ctId)
-            .map(mapCustomRow),
-        });
-      }
+      const newTabs: CertTypeTab[] = certSpecificRows.map(
+        (row: Record<string, unknown>) => {
+          const ctId = row.certificate_type_id as string;
+          return {
+            certTypeId: ctId,
+            certTypeName: certTypeMap.get(ctId)?.name_ar || "—",
+            reqRowId: row.id as string,
+            reqs: mapRowToReqs(row),
+            customReqs: customRows
+              .filter((cr: Record<string, unknown>) => cr.certificate_type_id === ctId)
+              .map(mapCustomRow),
+          };
+        }
+      );
 
       setTabs(newTabs);
       setIsUniversal(false);
@@ -544,31 +528,108 @@ export default function EditProgramPage({
   /*  Cert type tab management                                         */
   /* ---------------------------------------------------------------- */
 
-  function handleAddCertType(certTypeId: string) {
+  async function handleAddCertType(certTypeId: string) {
     const ct = certTypes.find((c) => c.id === certTypeId);
     if (!ct) return;
 
-    const newTab: CertTypeTab = {
-      certTypeId: ct.id,
-      certTypeName: ct.name_ar,
-      reqRowId: null,
-      reqs: { ...defaultReqs },
-      customReqs: [],
-    };
+    if (isUniversal && tabs.length === 1 && tabs[0].certTypeId === null) {
+      // Converting from universal mode → first cert-specific tab
+      // COPY universal requirements into the new cert tab
+      const universalTab = tabs[0];
 
-    setTabs((prev) => [...prev, newTab]);
-    setActiveTabIndex(tabs.length);
-    setIsUniversal(false);
-    setShowCertTypePicker(false);
+      // Call API to convert the universal row's certificate_type_id
+      if (universalTab.reqRowId) {
+        setSaving(true);
+        await fetch(`/api/programs/${programId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            convert_cert_type: {
+              req_row_id: universalTab.reqRowId,
+              from_cert_type_id: null,
+              to_cert_type_id: certTypeId,
+            },
+          }),
+        });
+        setSaving(false);
+      }
+
+      // Replace universal tab with new cert-specific tab (same data, different cert type)
+      const convertedTab: CertTypeTab = {
+        certTypeId: ct.id,
+        certTypeName: ct.name_ar,
+        reqRowId: universalTab.reqRowId,
+        reqs: { ...universalTab.reqs },
+        customReqs: universalTab.customReqs.map((cr) => ({
+          ...cr,
+          certificate_type_id: ct.id,
+        })),
+      };
+
+      setTabs([convertedTab]);
+      setActiveTabIndex(0);
+      setIsUniversal(false);
+      setShowCertTypePicker(false);
+      setToast(`تم نسخ الشروط العامة إلى تبويب ${ct.name_ar}`);
+      setTimeout(() => setToast(""), 3000);
+    } else {
+      // Already in multi-cert mode — add new tab with empty defaults
+      const newTab: CertTypeTab = {
+        certTypeId: ct.id,
+        certTypeName: ct.name_ar,
+        reqRowId: null,
+        reqs: { ...defaultReqs },
+        customReqs: [],
+      };
+
+      setTabs((prev) => [...prev, newTab]);
+      setActiveTabIndex(tabs.length);
+      setShowCertTypePicker(false);
+    }
   }
 
   async function handleRemoveCertType(tabIndex: number) {
     const tab = tabs[tabIndex];
-    if (tabs.length <= 1) return;
 
     if (!confirm(t("admin.confirmRemoveCertType"))) return;
 
-    // If the tab has a saved row, tell the API to delete it
+    if (tabs.length <= 1) {
+      // Removing the LAST cert-specific tab → convert back to universal
+      if (tab.reqRowId && tab.certTypeId) {
+        setSaving(true);
+        await fetch(`/api/programs/${programId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            convert_cert_type: {
+              req_row_id: tab.reqRowId,
+              from_cert_type_id: tab.certTypeId,
+              to_cert_type_id: null,
+            },
+          }),
+        });
+        setSaving(false);
+      }
+
+      // Convert tab to universal
+      setTabs([{
+        certTypeId: null,
+        certTypeName: t("admin.universalRequirements"),
+        reqRowId: tab.reqRowId,
+        reqs: { ...tab.reqs },
+        customReqs: tab.customReqs.map((cr) => ({
+          ...cr,
+          certificate_type_id: null,
+        })),
+      }]);
+      setActiveTabIndex(0);
+      setIsUniversal(true);
+      setToast("تم تحويل الشروط إلى شروط عامة");
+      setTimeout(() => setToast(""), 3000);
+      return;
+    }
+
+    // Removing one of multiple tabs — delete the row from DB
     if (tab.reqRowId) {
       setSaving(true);
       await fetch(`/api/programs/${programId}`, {
@@ -905,16 +966,14 @@ export default function EditProgramPage({
                 >
                   {tab.certTypeName}
                 </button>
-                {tabs.length > 1 && (
-                  <button
-                    type="button"
-                    onClick={() => handleRemoveCertType(idx)}
-                    className="px-1.5 py-1 text-xs text-red-400/60 hover:text-red-400 transition"
-                    title={t("admin.removeCertType")}
-                  >
-                    ✕
-                  </button>
-                )}
+                <button
+                  type="button"
+                  onClick={() => handleRemoveCertType(idx)}
+                  className="px-1.5 py-1 text-xs text-red-400/60 hover:text-red-400 transition"
+                  title={t("admin.removeCertType")}
+                >
+                  ✕
+                </button>
               </div>
             ))}
 
@@ -1426,6 +1485,13 @@ export default function EditProgramPage({
       </section>
 
       {/* ============ Delete Confirmation Dialog ============ */}
+      {/* Toast notification */}
+      {toast && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 rounded-lg bg-blue-600 px-6 py-3 text-sm font-medium text-white shadow-lg">
+          {toast}
+        </div>
+      )}
+
       {showDeleteConfirm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
           <div className="w-full max-w-md rounded-xl border border-white/10 bg-[#0f1c2e] p-6 shadow-xl">

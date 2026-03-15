@@ -17,6 +17,7 @@ export async function PATCH(
     certificate_type_id: certTypeId,
     req_row_id: reqRowId,
     delete_requirement_row_id: deleteRowId,
+    convert_cert_type: convertCertType,
   } = body;
 
   // Look up tenant_id from the program (needed for inserts)
@@ -77,6 +78,48 @@ export async function PATCH(
 
     // Delete the requirements row itself
     await supabase.from("requirements").delete().eq("id", deleteRowId);
+
+    return NextResponse.json({ ok: true });
+  }
+
+  // ─── Convert certificate_type_id on a requirements row + associated data ───
+  // Used when converting from universal (null) to a specific cert type, or vice versa
+  if (convertCertType) {
+    const { req_row_id: convertRowId, from_cert_type_id: fromCertTypeId, to_cert_type_id: toCertTypeId } = convertCertType;
+
+    // Update requirements row
+    if (convertRowId) {
+      await supabase
+        .from("requirements")
+        .update({ certificate_type_id: toCertTypeId ?? null })
+        .eq("id", convertRowId);
+    }
+
+    // Update custom_requirements: change from old cert type to new cert type
+    let crUpdateQuery = supabase
+      .from("custom_requirements")
+      .update({ certificate_type_id: toCertTypeId ?? null })
+      .eq("program_id", programId);
+
+    if (fromCertTypeId) {
+      crUpdateQuery = crUpdateQuery.eq("certificate_type_id", fromCertTypeId);
+    } else {
+      crUpdateQuery = crUpdateQuery.is("certificate_type_id", null);
+    }
+    await crUpdateQuery;
+
+    // Update scholarship_tiers similarly
+    let stUpdateQuery = supabase
+      .from("scholarship_tiers")
+      .update({ certificate_type_id: toCertTypeId ?? null })
+      .eq("program_id", programId);
+
+    if (fromCertTypeId) {
+      stUpdateQuery = stUpdateQuery.eq("certificate_type_id", fromCertTypeId);
+    } else {
+      stUpdateQuery = stUpdateQuery.is("certificate_type_id", null);
+    }
+    await stUpdateQuery;
 
     return NextResponse.json({ ok: true });
   }
