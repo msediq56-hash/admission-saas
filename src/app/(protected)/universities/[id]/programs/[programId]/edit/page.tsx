@@ -47,6 +47,16 @@ interface Requirements {
   requires_portfolio: boolean;
   requires_research_plan: boolean;
   result_notes: string | null;
+  // A Level fields (British certificates)
+  requires_a_levels: boolean;
+  a_level_subjects_min: number | null;
+  a_level_min_grade: string | null;
+  a_level_requires_core: boolean;
+  a_level_effect: string | null;
+  // IB fields (International Baccalaureate)
+  requires_ib: boolean;
+  ib_min_points: number | null;
+  ib_effect: string | null;
 }
 
 interface CertificateType {
@@ -102,6 +112,14 @@ const defaultReqs: Requirements = {
   requires_portfolio: false,
   requires_research_plan: false,
   result_notes: null,
+  requires_a_levels: false,
+  a_level_subjects_min: null,
+  a_level_min_grade: null,
+  a_level_requires_core: false,
+  a_level_effect: null,
+  requires_ib: false,
+  ib_min_points: null,
+  ib_effect: null,
 };
 
 /* ------------------------------------------------------------------ */
@@ -125,6 +143,14 @@ function mapRowToReqs(row: Record<string, unknown>): Requirements {
     requires_portfolio: (row.requires_portfolio as boolean) ?? false,
     requires_research_plan: (row.requires_research_plan as boolean) ?? false,
     result_notes: (row.result_notes as string | null) ?? null,
+    requires_a_levels: (row.requires_a_levels as boolean) ?? false,
+    a_level_subjects_min: (row.a_level_subjects_min as number | null) ?? null,
+    a_level_min_grade: (row.a_level_min_grade as string | null) ?? null,
+    a_level_requires_core: (row.a_level_requires_core as boolean) ?? false,
+    a_level_effect: (row.a_level_effect as string | null) ?? null,
+    requires_ib: (row.requires_ib as boolean) ?? false,
+    ib_min_points: (row.ib_min_points as number | null) ?? null,
+    ib_effect: (row.ib_effect as string | null) ?? null,
   };
 }
 
@@ -975,6 +1001,60 @@ export default function EditProgramPage({
             <Toggle label={t("admin.requiresEntranceExam")} checked={reqs.requires_entrance_exam} onChange={(v) => updateReq("requires_entrance_exam", v)} />
             <Toggle label={t("admin.requiresPortfolio")} checked={reqs.requires_portfolio} onChange={(v) => updateReq("requires_portfolio", v)} />
             <Toggle label={t("admin.requiresResearchPlan")} checked={reqs.requires_research_plan} onChange={(v) => updateReq("requires_research_plan", v)} />
+
+            {/* --- A Level (British certificates) --- */}
+            <div className="border-t border-white/10 pt-3 mt-3">
+              <p className="text-xs font-medium text-slate-400 mb-2">{t("admin.britishRequirements")}</p>
+              <Toggle label={t("admin.requiresALevels")} checked={reqs.requires_a_levels} onChange={(v) => updateReq("requires_a_levels", v)} />
+              {reqs.requires_a_levels && (
+                <div className="mr-8 mt-2 space-y-3">
+                  <div className="grid gap-4 sm:grid-cols-3">
+                    <div>
+                      <label className="block text-xs text-slate-400 mb-1">{t("admin.aLevelSubjectsMin")}</label>
+                      <input type="number" min="1" max="10" value={reqs.a_level_subjects_min ?? ""} onChange={(e) => updateReq("a_level_subjects_min", e.target.value ? Number(e.target.value) : null)} className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white focus:border-blue-500 focus:outline-none" />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-slate-400 mb-1">{t("admin.aLevelMinGrade")}</label>
+                      <select value={reqs.a_level_min_grade || ""} onChange={(e) => updateReq("a_level_min_grade", e.target.value || null)} className="w-full rounded-lg border border-white/10 bg-[#0f1c2e] px-3 py-2 text-sm text-white focus:border-blue-500 focus:outline-none">
+                        <option value="" className="bg-[#0f1c2e] text-white">—</option>
+                        {["A*", "A", "B", "C", "D", "E"].map((g) => (
+                          <option key={g} value={g} className="bg-[#0f1c2e] text-white">{g}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-xs text-slate-400 mb-1">{t("admin.aLevelEffect")}</label>
+                      <select value={reqs.a_level_effect || "blocks_admission"} onChange={(e) => updateReq("a_level_effect", e.target.value)} className="w-full rounded-lg border border-white/10 bg-[#0f1c2e] px-3 py-2 text-sm text-white focus:border-blue-500 focus:outline-none">
+                        <option value="blocks_admission" className="bg-[#0f1c2e] text-white">{t("admin.blocks")}</option>
+                        <option value="makes_conditional" className="bg-[#0f1c2e] text-white">{t("admin.conditional")}</option>
+                      </select>
+                    </div>
+                  </div>
+                  <Toggle label={t("admin.aLevelRequiresCore")} checked={reqs.a_level_requires_core} onChange={(v) => updateReq("a_level_requires_core", v)} />
+                </div>
+              )}
+            </div>
+
+            {/* --- IB (International Baccalaureate) --- */}
+            <div className="border-t border-white/10 pt-3 mt-3">
+              <p className="text-xs font-medium text-slate-400 mb-2">{t("admin.ibRequirements")}</p>
+              <Toggle label={t("admin.requiresIB")} checked={reqs.requires_ib} onChange={(v) => updateReq("requires_ib", v)} />
+              {reqs.requires_ib && (
+                <div className="mr-8 mt-2 grid gap-4 sm:grid-cols-2">
+                  <div>
+                    <label className="block text-xs text-slate-400 mb-1">{t("admin.ibMinPoints")}</label>
+                    <input type="number" min="0" max="45" value={reqs.ib_min_points ?? ""} onChange={(e) => updateReq("ib_min_points", e.target.value ? Number(e.target.value) : null)} className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white focus:border-blue-500 focus:outline-none" />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-slate-400 mb-1">{t("admin.ibEffect")}</label>
+                    <select value={reqs.ib_effect || "blocks_admission"} onChange={(e) => updateReq("ib_effect", e.target.value)} className="w-full rounded-lg border border-white/10 bg-[#0f1c2e] px-3 py-2 text-sm text-white focus:border-blue-500 focus:outline-none">
+                      <option value="blocks_admission" className="bg-[#0f1c2e] text-white">{t("admin.blocks")}</option>
+                      <option value="makes_conditional" className="bg-[#0f1c2e] text-white">{t("admin.conditional")}</option>
+                    </select>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
 
           <div>

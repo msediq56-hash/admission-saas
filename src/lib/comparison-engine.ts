@@ -101,23 +101,22 @@ export function evaluateProfileAgainstProgram(
     }
   }
 
-  // --- A Level checks for British certificate programs ---
-  if (profile.certificateType === "british" && slug === "british") {
+  // --- A Level checks (field-driven from requirements) ---
+  if (req.requires_a_levels && profile.certificateType === "british") {
+    const needed = req.a_level_subjects_min || 3;
     const aCount = profile.aLevelCount ?? 0;
     const aCCount = profile.aLevelCCount ?? 0;
 
-    // All British programs require 3 A Levels
-    if (aCount < 3) {
-      return makeNegative(entry, "غير مؤهل — يحتاج 3 مواد A Level");
+    if (aCount < needed) {
+      return makeNegative(entry, `غير مؤهل — يحتاج ${needed} مواد A Level`);
     }
 
-    // For bachelor (non-foundation): require 3 C+ grades
-    if (!isFoundation) {
-      if (aCCount < 3) {
+    // Grade check: skip for foundation (foundation accepts any grade)
+    if (req.a_level_min_grade && !isFoundation) {
+      if (aCCount < needed) {
         negatives.push("درجات أقل من C — جرّب السنة التأسيسية");
       }
     }
-    // Foundation: 3 A Levels is enough, no C grade requirement
   }
 
   // 1. High school

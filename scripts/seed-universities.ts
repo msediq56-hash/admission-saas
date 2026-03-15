@@ -402,35 +402,15 @@ async function main() {
     ielts_effect: "interview: سيتم ترتيب مقابلة لتقييم اللغة",
     ielts_alternatives: { duolingo: 110 },
     result_notes: "الرسوم: 20,000 يورو/سنة",
+    requires_a_levels: true,
     a_level_subjects_min: 3,
     a_level_min_grade: "C",
     a_level_requires_core: true,
+    a_level_effect: "blocks_admission",
   });
 
-  // Bachelor — British certificate custom requirements (A Level questions)
-  await insertCustomRequirements(constructorBachelorId, britishCertId, [
-    {
-      question_text: "هل لدى الطالب 3 مواد A Level؟",
-      question_type: "yes_no",
-      effect: "blocks_admission",
-      negative_message: "غير مؤهل — يحتاج 3 مواد A Level. جرّب السنة التأسيسية IFY",
-      sort_order: 1,
-    },
-    {
-      question_text: "هل جميع المواد الثلاثة بدرجة C أو أعلى؟",
-      question_type: "yes_no",
-      effect: "blocks_admission",
-      negative_message: "درجات أقل من C — جرّب مسار السنة التأسيسية IFY",
-      sort_order: 2,
-    },
-    {
-      question_text: "هل لدى الطالب مادتان من المواد الأساسية المعترف بها؟",
-      question_type: "yes_no",
-      effect: "blocks_admission",
-      negative_message: "لا يستوفي شرط المواد الأساسية",
-      sort_order: 3,
-    },
-  ]);
+  // Note: A Level questions are now generated from structured fields above
+  // No custom_requirements needed for A Level checks
 
   // Majors — shared by both cert paths, subject reqs apply to British only
   await insertMajors(constructorBachelorId, constructorMajors, britishSubjectReqs);
@@ -452,22 +432,16 @@ async function main() {
     result_notes: "الرسوم: 13,000 يورو",
   });
 
-  // Foundation — British certificate requirements
+  // Foundation — British certificate requirements (A Level from structured fields)
   await insertRequirement(constructorFoundationId, britishCertId, {
     requires_hs: true,
     result_notes: "الرسوم: 13,000 يورو",
+    requires_a_levels: true,
+    a_level_subjects_min: 3,
+    a_level_effect: "blocks_admission",
   });
 
-  // Foundation — British certificate custom requirements
-  await insertCustomRequirements(constructorFoundationId, britishCertId, [
-    {
-      question_text: "هل لدى الطالب 3 مواد A Level؟",
-      question_type: "yes_no",
-      effect: "blocks_admission",
-      negative_message: "يحتاج 3 مواد A Level — قد يحتاج مسار بديل",
-      sort_order: 1,
-    },
-  ]);
+  // Note: A Level questions now generated from structured fields above
 
   // -----------------------------------------------
   // 1.3 Master (ONE program, ONE requirement row — all certs)

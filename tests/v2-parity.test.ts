@@ -97,12 +97,12 @@ const CONSTRUCTOR_BACHELOR_BRITISH = makeEntry({
     ielts_effect: "interview: سيتم ترتيب مقابلة لتقييم اللغة",
     ielts_alternatives: { duolingo: 110 },
     result_notes: "الرسوم: 20,000 يورو/سنة",
+    requires_a_levels: true,
+    a_level_subjects_min: 3,
+    a_level_min_grade: "C",
+    a_level_requires_core: true,
+    a_level_effect: "blocks_admission",
   },
-  customRequirements: [
-    { id: "cr1", question_text: "هل لدى الطالب 3 مواد A Level؟", question_type: "yes_no", effect: "blocks_admission", negative_message: "غير مؤهل — يحتاج 3 مواد A Level. جرّب السنة التأسيسية IFY", sort_order: 1 },
-    { id: "cr2", question_text: "هل جميع المواد الثلاثة بدرجة C أو أعلى؟", question_type: "yes_no", effect: "blocks_admission", negative_message: "درجات أقل من C — جرّب مسار السنة التأسيسية IFY", sort_order: 2 },
-    { id: "cr3", question_text: "هل لدى الطالب مادتان من المواد الأساسية المعترف بها؟", question_type: "yes_no", effect: "blocks_admission", negative_message: "لا يستوفي شرط المواد الأساسية", sort_order: 3 },
-  ],
 });
 
 const CONSTRUCTOR_FOUNDATION_ARABIC = makeEntry({
@@ -124,10 +124,10 @@ const CONSTRUCTOR_FOUNDATION_BRITISH = makeEntry({
   requirements: {
     requires_hs: true,
     result_notes: "الرسوم: 13,000 يورو",
+    requires_a_levels: true,
+    a_level_subjects_min: 3,
+    a_level_effect: "blocks_admission",
   },
-  customRequirements: [
-    { id: "cr4", question_text: "هل لدى الطالب 3 مواد A Level؟", question_type: "yes_no", effect: "blocks_admission", negative_message: "يحتاج 3 مواد A Level — قد يحتاج مسار بديل", sort_order: 1 },
-  ],
 });
 
 const CONSTRUCTOR_MASTER = makeEntry({

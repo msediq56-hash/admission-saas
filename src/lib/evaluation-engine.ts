@@ -59,6 +59,16 @@ export interface Requirement {
   requires_research_plan?: boolean;
   ielts_alternatives?: Record<string, number> | null;
   result_notes?: string;
+  // A Level fields (British certificates)
+  requires_a_levels?: boolean;
+  a_level_subjects_min?: number;
+  a_level_min_grade?: string;
+  a_level_requires_core?: boolean;
+  a_level_effect?: string;
+  // IB fields (International Baccalaureate)
+  requires_ib?: boolean;
+  ib_min_points?: number;
+  ib_effect?: string;
 }
 
 export interface CustomRequirement {
@@ -236,7 +246,50 @@ export function buildQuestionsFromRequirements(
     });
   }
 
-  // 10. Custom requirements (sorted by sort_order) — before major select
+  // 10. A Level requirements (British certificates)
+  if (req.requires_a_levels) {
+    const minSubjects = req.a_level_subjects_min || 3;
+    questions.push({
+      id: `q_${qIndex++}`,
+      text: `هل لدى الطالب ${minSubjects} مواد A Level؟`,
+      type: "yes_no",
+      isBlocking: true,
+      sourceField: "requires_a_levels_count",
+    });
+
+    if (req.a_level_min_grade) {
+      questions.push({
+        id: `q_${qIndex++}`,
+        text: `هل جميع المواد الثلاثة بدرجة ${req.a_level_min_grade} أو أعلى؟`,
+        type: "yes_no",
+        isBlocking: req.a_level_effect === "blocks_admission",
+        sourceField: "requires_a_levels_grade",
+      });
+    }
+
+    if (req.a_level_requires_core) {
+      questions.push({
+        id: `q_${qIndex++}`,
+        text: "هل لدى الطالب مادتان من المواد الأساسية المعترف بها؟",
+        type: "yes_no",
+        isBlocking: true,
+        sourceField: "requires_a_levels_core",
+      });
+    }
+  }
+
+  // 11. IB requirements (International Baccalaureate)
+  if (req.requires_ib) {
+    questions.push({
+      id: `q_${qIndex++}`,
+      text: `هل لدى الطالب ${req.ib_min_points} نقطة IB أو أعلى؟`,
+      type: "yes_no",
+      isBlocking: req.ib_effect === "blocks_admission",
+      sourceField: "requires_ib",
+    });
+  }
+
+  // 12. Custom requirements (sorted by sort_order) — before major select
   const sortedCustom = [...customReqs].sort(
     (a, b) => a.sort_order - b.sort_order
   );
@@ -262,7 +315,7 @@ export function buildQuestionsFromRequirements(
     questions.push(q);
   }
 
-  // 11. Major select (if program has majors)
+  // 13. Major select (if program has majors)
   if (majors && majors.length > 0) {
     questions.push({
       id: `q_${qIndex++}`,
@@ -441,6 +494,53 @@ export function evaluateAnswers(
               category: "خطة بحث",
               description: "يحتاج تجهيز خطة بحث",
             });
+          }
+          break;
+
+        case "requires_a_levels_count":
+          if (answer === "no") {
+            const minSubjects = req.a_level_subjects_min || 3;
+            negatives.push(
+              `غير مؤهل — يحتاج ${minSubjects} مواد A Level`
+            );
+          }
+          break;
+
+        case "requires_a_levels_grade":
+          if (answer === "no") {
+            const effect = req.a_level_effect || "blocks_admission";
+            if (effect === "blocks_admission") {
+              negatives.push(
+                `درجات أقل من ${req.a_level_min_grade}`
+              );
+            } else {
+              conditions.push({
+                category: "A Level",
+                description: `درجات أقل من ${req.a_level_min_grade}`,
+              });
+            }
+          }
+          break;
+
+        case "requires_a_levels_core":
+          if (answer === "no") {
+            negatives.push("لا يستوفي شرط المواد الأساسية");
+          }
+          break;
+
+        case "requires_ib":
+          if (answer === "no") {
+            const ibEffect = req.ib_effect || "blocks_admission";
+            if (ibEffect === "blocks_admission") {
+              negatives.push(
+                `يحتاج ${req.ib_min_points} نقطة IB أو أعلى`
+              );
+            } else {
+              conditions.push({
+                category: "IB",
+                description: `يحتاج ${req.ib_min_points} نقطة IB أو أعلى`,
+              });
+            }
           }
           break;
 
