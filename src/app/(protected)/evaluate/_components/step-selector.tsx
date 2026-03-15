@@ -203,7 +203,7 @@ export function ProgramStep({
   return (
     <div>
       <h2 className="text-lg font-semibold text-slate-300 mb-4">
-        {t("evaluation.selectCertificate")}
+        {t("evaluation.selectProgram")}
       </h2>
       {loading ? (
         <p className="text-slate-400">{t("common.loading")}</p>
@@ -217,6 +217,11 @@ export function ProgramStep({
               onClick={() => onSelect(prog)}
               className="rounded-xl border border-white/10 bg-white/5 p-5 text-right transition hover:border-blue-500/50 hover:bg-white/10"
             >
+              <span
+                className={`inline-block rounded-full px-3 py-1 text-xs font-medium mb-2 ${categoryColors[prog.category] || "bg-slate-500/15 text-slate-400"}`}
+              >
+                {t(`categories.${prog.category}` as Parameters<typeof t>[0])}
+              </span>
               <h3 className="text-base font-semibold text-white">
                 {prog.name}
               </h3>

@@ -21,7 +21,6 @@ import {
   CountryStep,
   TypeStep,
   UniversityStep,
-  CategoryStep,
   ProgramStep,
   CertificateTypeStep,
 } from "./_components/step-selector";
@@ -32,7 +31,6 @@ type Step =
   | "country"
   | "type"
   | "university"
-  | "category"
   | "program"
   | "certType"
   | "questions"
@@ -69,7 +67,6 @@ export default function EvaluatePage() {
   const [selectedType, setSelectedType] = useState<string | null>(null);
   const [selectedUniversity, setSelectedUniversity] =
     useState<University | null>(null);
-  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [selectedProgram, setSelectedProgram] = useState<Program | null>(null);
   const [selectedCertType, setSelectedCertType] =
     useState<CertificateTypeOption | null>(null);
@@ -122,12 +119,6 @@ export default function EvaluatePage() {
       u.country === selectedCountry &&
       (selectedType ? u.type === selectedType : true)
   );
-  const categoriesForUniversity = selectedUniversity
-    ? [...new Set(programs.map((p) => p.category))]
-    : [];
-  const programsForCategory = selectedCategory
-    ? programs.filter((p) => p.category === selectedCategory)
-    : [];
 
   const fetchPrograms = useCallback(
     async (universityId: string) => {
@@ -270,11 +261,6 @@ export default function EvaluatePage() {
     setSelectedCountry(uni.country);
     setSelectedType(uni.type);
     await fetchPrograms(uni.id);
-    setStep("category");
-  }
-
-  function handleSelectCategory(category: string) {
-    setSelectedCategory(category);
     setStep("program");
   }
 
@@ -341,11 +327,21 @@ export default function EvaluatePage() {
       const selectedMajor = majors.find((m) => m.id === value);
       if (selectedMajor) {
         setLoading(true);
-        const { data: subjectReqs } = await supabase
+        // Filter by cert type: if selectedCertType exists, only fetch subject reqs for that cert type
+        let subjectQuery = supabase
           .from("major_subject_requirements")
           .select("*")
           .eq("major_id", selectedMajor.id)
           .order("sort_order");
+
+        if (selectedCertType) {
+          subjectQuery = subjectQuery.eq(
+            "certificate_type_id",
+            selectedCertType.id
+          );
+        }
+
+        const { data: subjectReqs } = await subjectQuery;
         setLoading(false);
 
         if (subjectReqs && subjectReqs.length > 0) {
@@ -396,17 +392,13 @@ export default function EvaluatePage() {
         setSelectedType(null);
         setStep("type");
         break;
-      case "category":
-        setSelectedUniversity(null);
-        setSelectedCategory(null);
-        setStep("university");
-        break;
       case "program":
-        setSelectedCategory(null);
-        setStep("category");
+        setSelectedUniversity(null);
+        setStep("university");
         break;
       case "certType":
         setSelectedCertType(null);
+        setSelectedProgram(null);
         setStep("program");
         break;
       case "questions":
@@ -449,7 +441,6 @@ export default function EvaluatePage() {
     setSelectedCountry(null);
     setSelectedType(null);
     setSelectedUniversity(null);
-    setSelectedCategory(null);
     setSelectedProgram(null);
     setSelectedCertType(null);
     setAvailableCertTypes([]);
@@ -467,8 +458,7 @@ export default function EvaluatePage() {
   const stepGroup = (() => {
     if (step === "country" || step === "type" || step === "university")
       return 0;
-    if (step === "category" || step === "program" || step === "certType")
-      return 1;
+    if (step === "program" || step === "certType") return 1;
     if (step === "questions") return 2;
     return 3;
   })();
@@ -490,10 +480,6 @@ export default function EvaluatePage() {
         : t("universities.private")
     );
   if (selectedUniversity) breadcrumbParts.push(selectedUniversity.name);
-  if (selectedCategory)
-    breadcrumbParts.push(
-      t(`categories.${selectedCategory}` as Parameters<typeof t>[0])
-    );
   if (selectedProgram) breadcrumbParts.push(selectedProgram.name);
   if (selectedCertType) breadcrumbParts.push(selectedCertType.name_ar);
 
@@ -557,16 +543,9 @@ export default function EvaluatePage() {
           onSelect={handleSelectUniversity}
         />
       )}
-      {step === "category" && (
-        <CategoryStep
-          categories={categoriesForUniversity}
-          loading={loading}
-          onSelect={handleSelectCategory}
-        />
-      )}
       {step === "program" && (
         <ProgramStep
-          programs={programsForCategory}
+          programs={programs}
           loading={loading}
           onSelect={handleSelectProgram}
         />

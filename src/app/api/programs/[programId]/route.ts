@@ -67,7 +67,7 @@ export async function PATCH(
     // Upsert each custom requirement
     for (const cr of custom_requirements) {
       if (cr.id) {
-        // Update existing
+        // Update existing — preserve certificate_type_id
         await supabase
           .from("custom_requirements")
           .update({
@@ -79,10 +79,11 @@ export async function PATCH(
             sort_order: cr.sort_order,
             options: cr.options || null,
             option_effects: cr.option_effects || null,
+            certificate_type_id: cr.certificate_type_id ?? undefined,
           })
           .eq("id", cr.id);
       } else {
-        // Insert new
+        // Insert new — include certificate_type_id
         await supabase.from("custom_requirements").insert({
           program_id: programId,
           question_text: cr.question_text,
@@ -93,6 +94,7 @@ export async function PATCH(
           sort_order: cr.sort_order || 0,
           options: cr.options || null,
           option_effects: cr.option_effects || null,
+          certificate_type_id: cr.certificate_type_id || null,
         });
       }
     }
