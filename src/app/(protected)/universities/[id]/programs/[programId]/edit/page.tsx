@@ -476,7 +476,7 @@ export default function EditProgramPage({
           complexity_level: computedComplexity,
         },
         requirements: reqs,
-        custom_requirements: customReqs,
+        custom_requirements: customReqs.map((cr, i) => ({ ...cr, sort_order: i + 1 })),
       }),
     });
 
@@ -497,13 +497,13 @@ export default function EditProgramPage({
     setSavedMajors(false);
     setError("");
 
-    const payload = majors.map((m) => ({
+    const payload = majors.map((m, mIdx) => ({
       id: m.id,
       name_ar: m.name_ar,
       name_en: m.name_en || undefined,
       group_code: m.group_code || undefined,
-      sort_order: m.sort_order,
-      subject_requirements: m.subject_requirements.map((sr) => ({
+      sort_order: mIdx + 1,
+      subject_requirements: m.subject_requirements.map((sr, srIdx) => ({
         id: sr.id,
         certificate_type_id: sr.certificate_type_id,
         question_text: sr.question_text,
@@ -513,7 +513,7 @@ export default function EditProgramPage({
         negative_message: sr.negative_message || null,
         positive_message: sr.positive_message || null,
         option_effects: sr.option_effects || null,
-        sort_order: sr.sort_order,
+        sort_order: srIdx + 1,
       })),
     }));
 
@@ -698,7 +698,7 @@ export default function EditProgramPage({
                 </button>
               </div>
 
-              <div className="grid gap-3 sm:grid-cols-3">
+              <div className="grid gap-3 sm:grid-cols-2">
                 <div>
                   <label className="block text-xs text-slate-400 mb-1">{t("admin.questionType")}</label>
                   <select value={cr.question_type} onChange={(e) => updateCustomReq(index, "question_type", e.target.value)} className="w-full rounded-lg border border-white/10 bg-[#0f1c2e] px-3 py-2 text-sm text-white focus:border-blue-500 focus:outline-none">
@@ -712,10 +712,6 @@ export default function EditProgramPage({
                     <option value="blocks_admission" className="bg-[#0f1c2e] text-white">{t("admin.blocks")}</option>
                     <option value="makes_conditional" className="bg-[#0f1c2e] text-white">{t("admin.conditional")}</option>
                   </select>
-                </div>
-                <div>
-                  <label className="block text-xs text-slate-400 mb-1">sort_order</label>
-                  <input type="number" value={cr.sort_order} onChange={(e) => updateCustomReq(index, "sort_order", Number(e.target.value))} className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white focus:border-blue-500 focus:outline-none" />
                 </div>
               </div>
 
@@ -848,17 +844,13 @@ export default function EditProgramPage({
                       </div>
                     </div>
 
-                    <div className="grid gap-3 sm:grid-cols-3">
-                      <div>
+                    <div className="flex items-end gap-3">
+                      <div className="flex-1">
                         <label className="block text-xs text-slate-400 mb-1">{t("admin.groupCode")}</label>
                         <input type="text" value={major.group_code} onChange={(e) => updateMajor(mIdx, "group_code", e.target.value)} dir="ltr" placeholder="G1" className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white placeholder-slate-600 focus:border-blue-500 focus:outline-none" />
                         <p className="mt-1 text-[10px] text-slate-500">{t("admin.groupCodeHint")}</p>
                       </div>
                       <div>
-                        <label className="block text-xs text-slate-400 mb-1">sort_order</label>
-                        <input type="number" value={major.sort_order} onChange={(e) => updateMajor(mIdx, "sort_order", Number(e.target.value))} className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white focus:border-blue-500 focus:outline-none" />
-                      </div>
-                      <div className="flex items-end">
                         <button type="button" onClick={() => removeMajor(mIdx)} className="rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-2 text-sm text-red-400 hover:bg-red-500/20">
                           {t("admin.removeMajor")}
                         </button>
