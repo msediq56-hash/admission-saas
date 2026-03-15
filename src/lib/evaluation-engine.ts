@@ -233,21 +233,7 @@ export function buildQuestionsFromRequirements(
     });
   }
 
-  // 10. Major select (if program has majors)
-  if (majors && majors.length > 0) {
-    questions.push({
-      id: `q_${qIndex++}`,
-      text: "اختر التخصص",
-      type: "select",
-      sourceField: "major_select",
-      options: majors.map((m) => ({
-        label: m.name_ar,
-        value: m.id,
-      })),
-    });
-  }
-
-  // 11. Custom requirements (sorted by sort_order)
+  // 10. Custom requirements (sorted by sort_order) — before major select
   const sortedCustom = [...customReqs].sort(
     (a, b) => a.sort_order - b.sort_order
   );
@@ -268,6 +254,20 @@ export function buildQuestionsFromRequirements(
       }));
     }
     questions.push(q);
+  }
+
+  // 11. Major select (if program has majors)
+  if (majors && majors.length > 0) {
+    questions.push({
+      id: `q_${qIndex++}`,
+      text: "اختر التخصص",
+      type: "select",
+      sourceField: "major_select",
+      options: majors.map((m) => ({
+        label: m.name_ar,
+        value: m.id,
+      })),
+    });
   }
 
   return questions;
