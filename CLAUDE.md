@@ -40,10 +40,10 @@ Core tables with structured fields + JSON payload fields for complex logic:
 - `tenants` — offices/companies
 - `users` — advisors, admins, owners (linked to Supabase Auth)
 - `universities` — per tenant, with country, type, visibility
-- `programs` — per university, with category, complexity_level, metadata JSON
-- `requirements` — per program, structured fields (requires_hs, ielts_min, sat_required, etc.)
-- `custom_requirements` — per program, structured custom conditions (question + effect + message + option_effects jsonb for per-option effects in select questions)
-- `scholarship_tiers` — optional, for GPA-based scholarship logic
+- `programs` — per university, with category, complexity_level, metadata JSON. `certificate_type_id` on programs is legacy/optional — the real cert type is on requirements
+- `requirements` — per program per certificate type, structured fields (requires_hs, ielts_min, sat_required, etc.). One program can have MULTIPLE requirement rows, each with a different `certificate_type_id`. A null `certificate_type_id` means "applies to all certificate types"
+- `custom_requirements` — per program per certificate type, structured custom conditions (question + effect + message + option_effects jsonb for per-option effects in select questions). `certificate_type_id` scopes custom requirements to a specific cert type
+- `scholarship_tiers` — optional, for GPA-based scholarship logic. `certificate_type_id` scopes tiers to a specific cert type
 - `certificate_types` — certificate templates (arabic, british, american, IB) with grading systems and subject rules
 - `majors` — specializations within a program (e.g. 18 bachelor majors at Constructor)
 - `major_subject_requirements` — per-major, per-certificate-type subject prerequisites
@@ -69,6 +69,7 @@ Core tables with structured fields + JSON payload fields for complex logic:
 
 ### requirements table (the "comprehensive form")
 ```
+certificate_type_id (nullable FK → certificate_types, null = all certs),
 requires_hs, requires_12_years, requires_ielts, ielts_min, ielts_effect,
 requires_sat, sat_min, sat_effect, requires_gpa, gpa_min, gpa_effect,
 requires_bachelor, requires_entrance_exam, requires_portfolio,
@@ -76,19 +77,28 @@ requires_audition, requires_work_experience, requires_research_plan,
 ielts_alternatives, result_notes,
 a_level_subjects_min, a_level_min_grade, a_level_requires_core
 ```
+**Multiple rows per program**: A program can have multiple requirement rows, each scoped to a certificate type. Example: Constructor "بكالوريوس" has one row for Arabic certificates and one for British certificates.
 
 ### custom_requirements table (structured custom conditions)
 ```
+certificate_type_id (nullable FK → certificate_types, null = all certs),
 question_text, question_type (yes_no/select), effect (blocks_admission/makes_conditional),
 negative_message, positive_message, sort_order,
 option_effects (jsonb) — per-option effects for select questions: { "option_label": { "effect": "none|makes_conditional|blocks_admission", "message": "..." } }
+```
+
+### scholarship_tiers table
+```
+certificate_type_id (nullable FK → certificate_types, null = all certs),
+min_gpa, max_gpa, scholarship_percent, label, sort_order
 ```
 
 ## Certificate types system
 
 * System templates (is_system=true): arabic, british, american, IB — visible to all tenants, readonly
 * Tenant custom types (is_system=false): created by admin, only visible to their tenant
-* Each program links to a certificate_type via certificate_type_id
+* Certificate type is set at the **requirements level**, not the program level. One program can serve multiple certificate types by having multiple requirement rows
+* `programs.certificate_type_id` is legacy — kept for backward compatibility but the authoritative cert type is on `requirements.certificate_type_id`
 * British certificates auto-generate A Level questions from template_questions
 * The evaluation engine uses certificate_type properties instead of relying on program names
 
@@ -105,12 +115,13 @@ option_effects (jsonb) — per-option effects for select questions: { "option_la
 ## How evaluation works
 
 1. User selects university → program
-2. System reads `requirements` for that program
-3. For each requirement that is true, system generates a question dynamically:
+2. If program has multiple requirement rows (different certificate types), user selects certificate type first
+3. System reads the matching `requirements` row for that program + certificate type
+4. For each requirement that is true, system generates a question dynamically:
    - `requires_hs = true` → "هل لدى الطالب شهادة ثانوية؟"
    - `requires_ielts = true, ielts_min = 6.5` → "هل لدى الطالب IELTS بدرجة 6.5 أو أعلى؟"
-4. System also reads `custom_requirements` and asks those in order
-5. Based on answers, system calculates result: positive / conditional / negative
+5. System also reads `custom_requirements` (matching same certificate_type_id) and asks those in order
+6. Based on answers, system calculates result: positive / conditional / negative
 
 ## How comparison works
 
