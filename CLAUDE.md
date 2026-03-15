@@ -45,6 +45,8 @@ Core tables with structured fields + JSON payload fields for complex logic:
 - `custom_requirements` — per program, structured custom conditions (question + effect + message)
 - `scholarship_tiers` — optional, for GPA-based scholarship logic
 - `certificate_types` — certificate templates (arabic, british, american, IB) with grading systems and subject rules
+- `majors` — specializations within a program (e.g. 18 bachelor majors at Constructor)
+- `major_subject_requirements` — per-major, per-certificate-type subject prerequisites
 - `audit_log` — who changed what and when
 
 ### Row Level Security
@@ -88,6 +90,16 @@ negative_message, positive_message, sort_order
 * Each program links to a certificate_type via certificate_type_id
 * British certificates auto-generate A Level questions from template_questions
 * The evaluation engine uses certificate_type properties instead of relying on program names
+
+## Majors and subject requirements
+
+* Each program can have multiple majors (specializations)
+* Each major can have subject requirements that vary by certificate type
+* Example: Constructor British bachelor → CS major → needs Math A Level C+ and one science A Level
+* Example: Constructor Arabic bachelor → CS major → no additional subject requirements
+* Majors are optional — programs without majors work exactly as before
+* The evaluation engine asks major-selection and subject questions AFTER basic requirements
+* Majors are grouped by `group_code` (G1, G2, G3, G4) — majors in the same group share the same subject requirements
 
 ## How evaluation works
 

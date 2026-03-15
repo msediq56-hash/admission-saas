@@ -76,6 +76,72 @@ async function main() {
     return data.id;
   }
 
+  // Helper to insert majors for a program
+  async function insertMajors(
+    programId: string,
+    majors: Array<{
+      name_ar: string;
+      name_en?: string;
+      group_code: string;
+      sort_order: number;
+    }>,
+    subjectRequirements?: Record<
+      string, // group_code
+      Array<{
+        certificate_type_id: string;
+        question_text: string;
+        question_type: string;
+        effect: string;
+        negative_message?: string;
+        positive_message?: string;
+        sort_order: number;
+      }>
+    >
+  ) {
+    for (const major of majors) {
+      const { data: majorRow, error: majorErr } = await supabase
+        .from("majors")
+        .insert({
+          program_id: programId,
+          tenant_id: tid,
+          name_ar: major.name_ar,
+          name_en: major.name_en || null,
+          group_code: major.group_code,
+          sort_order: major.sort_order,
+        })
+        .select("id")
+        .single();
+      if (majorErr) {
+        console.error(`  Error creating major ${major.name_ar}:`, majorErr.message);
+        process.exit(1);
+      }
+
+      // Insert subject requirements for this major's group
+      const groupReqs = subjectRequirements?.[major.group_code];
+      if (groupReqs?.length) {
+        const rows = groupReqs.map((sr) => ({
+          major_id: majorRow.id,
+          tenant_id: tid,
+          certificate_type_id: sr.certificate_type_id,
+          question_text: sr.question_text,
+          question_type: sr.question_type,
+          effect: sr.effect,
+          negative_message: sr.negative_message || null,
+          positive_message: sr.positive_message || null,
+          sort_order: sr.sort_order,
+        }));
+        const { error: srErr } = await supabase
+          .from("major_subject_requirements")
+          .insert(rows);
+        if (srErr) {
+          console.error(`  Error creating subject reqs for ${major.name_ar}:`, srErr.message);
+          process.exit(1);
+        }
+      }
+    }
+    console.log(`    Majors created (${majors.length})`);
+  }
+
   // Helper to insert program + requirements + custom_requirements + scholarship_tiers
   async function insertProgram(
     universityId: string,
@@ -173,6 +239,8 @@ async function main() {
         `    Scholarship tiers created (${program.scholarshipTiers.length})`
       );
     }
+
+    return pid;
   }
 
   // =============================================
@@ -185,8 +253,97 @@ async function main() {
     1
   );
 
+  // Constructor majors data (18 majors, 4 groups)
+  const constructorMajors = [
+    { name_ar: "الكيمياء الحيوية وبيولوجيا الخلية", name_en: "biochem_cell_bio", group_code: "G1", sort_order: 1 },
+    { name_ar: "الكيمياء والتكنولوجيا الحيوية", name_en: "chem_biotech", group_code: "G1", sort_order: 2 },
+    { name_ar: "الكيمياء الدوائية والبيولوجيا الكيميائية", name_en: "pharma_chem_bio", group_code: "G1", sort_order: 3 },
+    { name_ar: "علوم الأرض والإدارة المستدامة", name_en: "earth_sci_sustainability", group_code: "G1", sort_order: 4 },
+    { name_ar: "الرياضيات والنمذجة", name_en: "math_modeling", group_code: "G2", sort_order: 5 },
+    { name_ar: "الفيزياء وعلوم البيانات", name_en: "physics_data_sci", group_code: "G2", sort_order: 6 },
+    { name_ar: "علوم الحاسوب (المسار الأول)", name_en: "cs_1", group_code: "G2", sort_order: 7 },
+    { name_ar: "علوم الحاسوب (المسار الثاني)", name_en: "cs_2", group_code: "G2", sort_order: 8 },
+    { name_ar: "علوم الحاسوب (المسار الثالث)", name_en: "cs_3", group_code: "G2", sort_order: 9 },
+    { name_ar: "البرمجيات والبيانات", name_en: "software_data", group_code: "G2", sort_order: 10 },
+    { name_ar: "الهندسة الكهربائية", name_en: "electrical_eng", group_code: "G2", sort_order: 11 },
+    { name_ar: "الروبوتات", name_en: "robotics", group_code: "G2", sort_order: 12 },
+    { name_ar: "الهندسة الصناعية", name_en: "industrial_eng", group_code: "G2", sort_order: 13 },
+    { name_ar: "الإدارة واتخاذ القرار", name_en: "mgmt_decision", group_code: "G2", sort_order: 14 },
+    { name_ar: "الاقتصاد العالمي والإدارة", name_en: "global_econ_mgmt", group_code: "G3", sort_order: 15 },
+    { name_ar: "علم النفس الاجتماعي والمعرفي المتكامل", name_en: "social_cog_psych", group_code: "G3", sort_order: 16 },
+    { name_ar: "إدارة الأعمال الدولية", name_en: "intl_business", group_code: "G3", sort_order: 17 },
+    { name_ar: "العلاقات الدولية: السياسة والتاريخ", name_en: "intl_relations", group_code: "G4", sort_order: 18 },
+  ];
+
+  // British certificate subject requirements per group
+  const britishSubjectReqs: Record<string, Array<{
+    certificate_type_id: string;
+    question_text: string;
+    question_type: string;
+    effect: string;
+    negative_message: string;
+    sort_order: number;
+  }>> = {
+    G1: [
+      {
+        certificate_type_id: britishCertId,
+        question_text: "هل لدى الطالب مادتان من: رياضيات / أحياء / كيمياء / فيزياء / حاسب؟",
+        question_type: "yes_no",
+        effect: "blocks_admission",
+        negative_message: "لا يستوفي شروط المواد المطلوبة للتخصص",
+        sort_order: 1,
+      },
+    ],
+    G2: [
+      {
+        certificate_type_id: britishCertId,
+        question_text: "هل لدى الطالب A Level رياضيات بدرجة C أو أعلى؟",
+        question_type: "yes_no",
+        effect: "blocks_admission",
+        negative_message: "لا يستوفي شروط المواد المطلوبة للتخصص",
+        sort_order: 1,
+      },
+      {
+        certificate_type_id: britishCertId,
+        question_text: "هل لدى الطالب مادة من: أحياء / كيمياء / فيزياء / حاسب؟",
+        question_type: "yes_no",
+        effect: "blocks_admission",
+        negative_message: "لا يستوفي شروط المواد المطلوبة للتخصص",
+        sort_order: 2,
+      },
+    ],
+    G3: [
+      {
+        certificate_type_id: britishCertId,
+        question_text: "هل لدى الطالب مادة من: تاريخ / جغرافيا / سياسة / اقتصاد؟",
+        question_type: "yes_no",
+        effect: "blocks_admission",
+        negative_message: "لا يستوفي شروط المواد المطلوبة للتخصص",
+        sort_order: 1,
+      },
+      {
+        certificate_type_id: britishCertId,
+        question_text: "هل لدى الطالب مادة من: رياضيات / أحياء / كيمياء / فيزياء / حاسب؟",
+        question_type: "yes_no",
+        effect: "blocks_admission",
+        negative_message: "لا يستوفي شروط المواد المطلوبة للتخصص",
+        sort_order: 2,
+      },
+    ],
+    G4: [
+      {
+        certificate_type_id: britishCertId,
+        question_text: "هل لدى الطالب مادة من: لغة / تاريخ / جغرافيا / سياسة / اقتصاد؟",
+        question_type: "yes_no",
+        effect: "blocks_admission",
+        negative_message: "لا يستوفي شروط المواد المطلوبة للتخصص",
+        sort_order: 1,
+      },
+    ],
+  };
+
   // 1.1 Bachelor — Arabic certificates
-  await insertProgram(constructorId, {
+  const constructorBachelorArabicId = await insertProgram(constructorId, {
     name: "بكالوريوس — شهادات عربية",
     category: "bachelor",
     complexity: "simple",
@@ -246,8 +403,11 @@ async function main() {
     ],
   });
 
+  // Majors for Arabic bachelor — no subject requirements
+  await insertMajors(constructorBachelorArabicId, constructorMajors);
+
   // 1.2 Bachelor — British certificate
-  await insertProgram(constructorId, {
+  const constructorBachelorBritishId = await insertProgram(constructorId, {
     name: "بكالوريوس — شهادة بريطانية",
     category: "bachelor",
     complexity: "complex",
@@ -295,6 +455,9 @@ async function main() {
       },
     ],
   });
+
+  // Majors for British bachelor — WITH subject requirements per group
+  await insertMajors(constructorBachelorBritishId, constructorMajors, britishSubjectReqs);
 
   // 1.3 Foundation — Arabic certificates
   await insertProgram(constructorId, {
@@ -611,7 +774,7 @@ async function main() {
 
   console.log("\n========================================");
   console.log("Seed completed successfully!");
-  console.log("3 universities, 17 programs seeded.");
+  console.log("3 universities, 17 programs, 36 majors seeded.");
   console.log("========================================");
 }
 
