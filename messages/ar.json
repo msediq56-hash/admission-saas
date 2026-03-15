@@ -223,7 +223,13 @@
     "removeOption": "حذف",
     "deactivateProgram": "تعطيل البرنامج",
     "activateProgram": "تفعيل البرنامج",
-    "programInactive": "غير نشط"
+    "programInactive": "غير نشط",
+    "addCertType": "إضافة نوع شهادة",
+    "removeCertType": "حذف نوع الشهادة",
+    "confirmRemoveCertType": "هل أنت متأكد من حذف شروط هذه الشهادة؟",
+    "universalRequirements": "شروط عامة (لجميع الشهادات)",
+    "selectCertTypeToAdd": "اختر نوع الشهادة",
+    "allCertTypesAdded": "جميع أنواع الشهادات مضافة"
   },
   "users": {
     "title": "إدارة المستخدمين",
