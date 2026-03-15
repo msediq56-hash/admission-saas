@@ -285,12 +285,30 @@ export default function EditProgramPage({
       setTabs([tabData]);
       setIsUniversal(true);
     } else {
-      // Multi-cert mode — one tab per cert type
+      // Multi-cert mode — one tab per cert type, with universal tab first if it exists
       const certTypeMap = new Map(
         allCertTypes.map((ct: { id: string; slug: string; name_ar: string; sort_order: number }) => [ct.id, ct])
       );
 
-      // Sort requirement rows by cert type sort_order
+      const newTabs: CertTypeTab[] = [];
+
+      // 1. If a universal row exists (certificate_type_id = null), include it as the FIRST tab
+      const universalRow = reqRows.find(
+        (r: Record<string, unknown>) => r.certificate_type_id === null
+      );
+      if (universalRow) {
+        newTabs.push({
+          certTypeId: null,
+          certTypeName: "شروط عامة (لجميع الشهادات)",
+          reqRowId: (universalRow.id as string) || null,
+          reqs: mapRowToReqs(universalRow),
+          customReqs: customRows
+            .filter((cr: Record<string, unknown>) => !cr.certificate_type_id)
+            .map(mapCustomRow),
+        });
+      }
+
+      // 2. Then add cert-specific tabs sorted by cert type sort_order
       const certSpecificRows = reqRows
         .filter((r: Record<string, unknown>) => r.certificate_type_id !== null)
         .sort((a: Record<string, unknown>, b: Record<string, unknown>) => {
@@ -299,20 +317,18 @@ export default function EditProgramPage({
           return aSort - bSort;
         });
 
-      const newTabs: CertTypeTab[] = certSpecificRows.map(
-        (row: Record<string, unknown>) => {
-          const ctId = row.certificate_type_id as string;
-          return {
-            certTypeId: ctId,
-            certTypeName: certTypeMap.get(ctId)?.name_ar || "—",
-            reqRowId: row.id as string,
-            reqs: mapRowToReqs(row),
-            customReqs: customRows
-              .filter((cr: Record<string, unknown>) => cr.certificate_type_id === ctId)
-              .map(mapCustomRow),
-          };
-        }
-      );
+      for (const row of certSpecificRows) {
+        const ctId = row.certificate_type_id as string;
+        newTabs.push({
+          certTypeId: ctId,
+          certTypeName: certTypeMap.get(ctId)?.name_ar || "—",
+          reqRowId: row.id as string,
+          reqs: mapRowToReqs(row),
+          customReqs: customRows
+            .filter((cr: Record<string, unknown>) => cr.certificate_type_id === ctId)
+            .map(mapCustomRow),
+        });
+      }
 
       setTabs(newTabs);
       setIsUniversal(false);
