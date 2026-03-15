@@ -69,6 +69,10 @@ export interface Requirement {
   requires_ib?: boolean;
   ib_min_points?: number;
   ib_effect?: string;
+  // Language certificate fields (multi-cert: IELTS, TOEFL, Duolingo, etc.)
+  requires_language_cert?: boolean;
+  accepted_language_certs?: Array<{ type: string; min_score: number }> | null;
+  language_cert_effect?: string;
 }
 
 export interface CustomRequirement {
@@ -176,8 +180,39 @@ export function buildQuestionsFromRequirements(
     });
   }
 
-  // 4. IELTS
-  if (req.requires_ielts) {
+  // 4. Language certificate (multi-cert) — falls back to IELTS-only
+  if (req.requires_language_cert && req.accepted_language_certs?.length) {
+    // Step 4a: "Does the student have a language certificate?"
+    questions.push({
+      id: `q_${qIndex++}`,
+      text: "هل لدى الطالب شهادة لغة إنجليزية؟",
+      type: "yes_no",
+      isBlocking: req.language_cert_effect === "blocks_if_below",
+      sourceField: "has_language_cert",
+    });
+
+    // Step 4b: "Which type?" (select from accepted certs)
+    questions.push({
+      id: `q_${qIndex++}`,
+      text: "ما نوع شهادة اللغة؟",
+      type: "select",
+      options: req.accepted_language_certs.map((c) => ({
+        label: `${c.type} (${c.min_score}+)`,
+        value: c.type,
+      })),
+      sourceField: "language_cert_type",
+    });
+
+    // Step 4c: "Does the score meet the minimum?"
+    questions.push({
+      id: `q_${qIndex++}`,
+      text: "هل الدرجة تحقق الحد الأدنى المطلوب؟",
+      type: "yes_no",
+      isBlocking: req.language_cert_effect === "blocks_if_below",
+      sourceField: "language_cert_meets_min",
+    });
+  } else if (req.requires_ielts) {
+    // Fallback to legacy IELTS-only
     const altText = buildIeltsAlternativesText(req.ielts_alternatives);
     questions.push({
       id: `q_${qIndex++}`,
@@ -407,6 +442,58 @@ export function evaluateAnswers(
         case "requires_bachelor":
           if (answer === "no")
             negatives.push("الطالب لا يملك شهادة بكالوريوس");
+          break;
+
+        case "has_language_cert":
+          if (answer === "no") {
+            const lcEffect = req.language_cert_effect || "blocks_if_below";
+            if (lcEffect === "blocks_if_below") {
+              negatives.push("يحتاج شهادة لغة إنجليزية");
+            } else if (lcEffect.startsWith("interview")) {
+              conditions.push({
+                category: "شهادة لغة",
+                description: lcEffect.split(": ")[1] || "سيتم ترتيب مقابلة لتقييم اللغة",
+              });
+            } else if (lcEffect.startsWith("conditional")) {
+              conditions.push({
+                category: "شهادة لغة",
+                description: lcEffect.split(": ")[1] || lcEffect,
+              });
+            } else {
+              conditions.push({
+                category: "شهادة لغة",
+                description: "يحتاج شهادة لغة إنجليزية",
+              });
+            }
+          }
+          break;
+
+        case "language_cert_type":
+          // Just records the type — no evaluation logic needed
+          break;
+
+        case "language_cert_meets_min":
+          if (answer === "no") {
+            const lcEffect2 = req.language_cert_effect || "blocks_if_below";
+            if (lcEffect2 === "blocks_if_below") {
+              negatives.push("الدرجة أقل من الحد الأدنى المطلوب");
+            } else if (lcEffect2.startsWith("interview")) {
+              conditions.push({
+                category: "شهادة لغة",
+                description: lcEffect2.split(": ")[1] || "سيتم ترتيب مقابلة لتقييم اللغة",
+              });
+            } else if (lcEffect2.startsWith("conditional")) {
+              conditions.push({
+                category: "شهادة لغة",
+                description: lcEffect2.split(": ")[1] || lcEffect2,
+              });
+            } else {
+              conditions.push({
+                category: "شهادة لغة",
+                description: "الدرجة أقل من الحد الأدنى المطلوب",
+              });
+            }
+          }
           break;
 
         case "requires_ielts":

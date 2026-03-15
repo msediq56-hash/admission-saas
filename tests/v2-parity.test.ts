@@ -923,6 +923,54 @@ test("حقل ديناميكي — select مع option_effects", () => {
 });
 
 // ============================================================
+// Language certificate (multi-cert) tests (2 cases)
+// ============================================================
+console.log("\n═══ شهادات اللغة (نظام متعدد الشهادات) ═══");
+
+// A program that uses the new language cert system
+const LANG_CERT_PROGRAM = makeEntry({
+  programName: "برنامج شهادات لغة",
+  category: "bachelor",
+  requirements: {
+    requires_hs: true,
+    requires_language_cert: true,
+    accepted_language_certs: [
+      { type: "IELTS", min_score: 6.5 },
+      { type: "Duolingo", min_score: 110 },
+    ],
+    language_cert_effect: "blocks_if_below",
+  },
+});
+
+// Case 42: Language cert IELTS meeting minimum → positive
+test("شهادة لغة — IELTS بدرجة 7.0 ≥ 6.5 → مؤهل", () => {
+  const profile: StudentProfile = {
+    ...BASE_ARABIC,
+    hasLanguageCert: true,
+    languageCertType: "IELTS",
+    languageCertScore: 7.0,
+  };
+  const result = evaluateProfileAgainstProgram(profile, LANG_CERT_PROGRAM);
+  assert.strictEqual(result.status, "positive");
+});
+
+// Case 43: Language cert Duolingo below minimum → negative
+test("شهادة لغة — Duolingo بدرجة 95 < 110 → غير مؤهل", () => {
+  const profile: StudentProfile = {
+    ...BASE_ARABIC,
+    hasLanguageCert: true,
+    languageCertType: "Duolingo",
+    languageCertScore: 95,
+  };
+  const result = evaluateProfileAgainstProgram(profile, LANG_CERT_PROGRAM);
+  assert.strictEqual(result.status, "negative");
+  assert.ok(
+    result.reason.includes("Duolingo"),
+    `السبب يجب أن يذكر Duolingo, حصلنا: ${result.reason}`
+  );
+});
+
+// ============================================================
 // Summary
 // ============================================================
 console.log("\n════════════════════════════════════════");

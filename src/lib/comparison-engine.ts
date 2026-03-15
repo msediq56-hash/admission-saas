@@ -17,6 +17,10 @@ export interface StudentProfile {
   aLevelCount: number | null;
   aLevelCCount: number | null;
   dynamicAnswers?: Record<string, string | boolean | number>;
+  // Language certificate fields
+  hasLanguageCert?: boolean;
+  languageCertType?: string | null;
+  languageCertScore?: number | null;
 }
 
 export interface ComparisonResult {
@@ -135,8 +139,51 @@ export function evaluateProfileAgainstProgram(
     negatives.push("لا يملك شهادة بكالوريوس");
   }
 
-  // 4 & 5. IELTS — fixed: "interview" effect is NOT blocking
-  if (req.requires_ielts) {
+  // 4 & 5. Language certificate (multi-cert) — falls back to IELTS-only
+  if (req.requires_language_cert && req.accepted_language_certs?.length) {
+    const lcEffect = req.language_cert_effect || "blocks_if_below";
+
+    if (lcEffect.startsWith("interview")) {
+      // Interview-based: NEVER blocks, only adds notes
+      if (!profile.hasLanguageCert) {
+        notes.push("سيتم ترتيب مقابلة لتقييم اللغة");
+      } else if (profile.languageCertType && profile.languageCertScore !== null) {
+        const matchedCert = req.accepted_language_certs.find(
+          (c) => c.type === profile.languageCertType
+        );
+        if (matchedCert && profile.languageCertScore! < matchedCert.min_score) {
+          notes.push("يرجى عدم رفع شهادة اللغة مع ملف الطالب — سيتم ترتيب مقابلة لتقييم اللغة");
+        }
+      }
+    } else if (lcEffect === "blocks_if_below") {
+      if (!profile.hasLanguageCert) {
+        negatives.push("لا يملك شهادة لغة إنجليزية");
+      } else if (profile.languageCertType && profile.languageCertScore !== null) {
+        const matchedCert = req.accepted_language_certs.find(
+          (c) => c.type === profile.languageCertType
+        );
+        if (matchedCert && profile.languageCertScore! < matchedCert.min_score) {
+          negatives.push(
+            `يحتاج ${matchedCert.type} بدرجة ${matchedCert.min_score} أو أعلى (الحالي: ${profile.languageCertScore})`
+          );
+        } else if (!matchedCert) {
+          negatives.push(`نوع الشهادة ${profile.languageCertType} غير مقبول`);
+        }
+      }
+    } else if (lcEffect.startsWith("conditional")) {
+      if (!profile.hasLanguageCert) {
+        conditions.push(lcEffect.split(": ")[1] || lcEffect);
+      } else if (profile.languageCertType && profile.languageCertScore !== null) {
+        const matchedCert = req.accepted_language_certs.find(
+          (c) => c.type === profile.languageCertType
+        );
+        if (matchedCert && profile.languageCertScore! < matchedCert.min_score) {
+          conditions.push(lcEffect.split(": ")[1] || lcEffect);
+        }
+      }
+    }
+  } else if (req.requires_ielts) {
+    // Fallback to legacy IELTS-only
     const effect = req.ielts_effect || "";
 
     if (effect.startsWith("interview")) {

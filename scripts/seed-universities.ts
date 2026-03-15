@@ -375,7 +375,7 @@ async function main() {
     certificateTypeId: null, // no longer on program — moved to requirements
   });
 
-  // Bachelor — Arabic certificate requirements
+  // Bachelor — Arabic certificate requirements (uses new language cert system)
   await insertRequirement(constructorBachelorId, arabicCertId, {
     requires_hs: true,
     requires_sat: true,
@@ -384,6 +384,12 @@ async function main() {
     requires_ielts: true,
     ielts_min: 6.5,
     ielts_effect: "interview: سيتم ترتيب مقابلة لتقييم اللغة",
+    requires_language_cert: true,
+    accepted_language_certs: [
+      { type: "IELTS", min_score: 6.5 },
+      { type: "Duolingo", min_score: 110 },
+    ],
+    language_cert_effect: "interview: سيتم ترتيب مقابلة لتقييم اللغة",
     requires_gpa: true,
     gpa_min: 80,
     gpa_effect: "scholarship",

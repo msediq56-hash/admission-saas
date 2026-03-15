@@ -252,7 +252,15 @@
     "confirmRemoveCertType": "هل أنت متأكد من حذف شروط هذه الشهادة؟",
     "universalRequirements": "شروط عامة (لجميع الشهادات)",
     "selectCertTypeToAdd": "اختر نوع الشهادة",
-    "allCertTypesAdded": "جميع أنواع الشهادات مضافة"
+    "allCertTypesAdded": "جميع أنواع الشهادات مضافة",
+    "requiresLanguageCert": "يحتاج شهادة لغة",
+    "languageCertRequirements": "شروط شهادة اللغة",
+    "languageCertEffect": "تأثير شهادة اللغة",
+    "acceptedLanguageCerts": "الشهادات المقبولة",
+    "addLanguageCert": "إضافة شهادة",
+    "minScore": "الحد الأدنى",
+    "interviewEffect": "مقابلة لتقييم اللغة",
+    "legacyIeltsNote": "بيانات IELTS القديمة (للتوافق مع الإصدار السابق)"
   },
   "users": {
     "title": "إدارة المستخدمين",

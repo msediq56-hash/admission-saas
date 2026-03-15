@@ -34,6 +34,11 @@ interface CustomRequirement {
   comparison_key: string;
 }
 
+interface LanguageCertEntry {
+  type: string;
+  min_score: number;
+}
+
 interface Requirements {
   requires_hs: boolean;
   requires_12_years: boolean;
@@ -60,6 +65,10 @@ interface Requirements {
   requires_ib: boolean;
   ib_min_points: number | null;
   ib_effect: string | null;
+  // Language certificate fields (multi-cert: IELTS, TOEFL, Duolingo, etc.)
+  requires_language_cert: boolean;
+  accepted_language_certs: LanguageCertEntry[] | null;
+  language_cert_effect: string | null;
 }
 
 interface CertificateType {
@@ -123,7 +132,72 @@ const defaultReqs: Requirements = {
   requires_ib: false,
   ib_min_points: null,
   ib_effect: null,
+  requires_language_cert: false,
+  accepted_language_certs: null,
+  language_cert_effect: null,
 };
+
+/* ------------------------------------------------------------------ */
+/*  Field visibility per certificate type                              */
+/* ------------------------------------------------------------------ */
+
+type FieldGroup = "hs_12years" | "gpa" | "language_cert" | "sat" | "entrance_exam" | "portfolio" | "research_plan" | "bachelor" | "a_levels" | "ib";
+
+function getVisibleFields(certTypeSlug: string | null, programCategory: string): Set<FieldGroup> {
+  // Universal (null slug) → show everything
+  if (!certTypeSlug) {
+    return new Set<FieldGroup>(["hs_12years", "gpa", "language_cert", "sat", "entrance_exam", "portfolio", "research_plan", "bachelor", "a_levels", "ib"]);
+  }
+
+  const fields = new Set<FieldGroup>();
+
+  // Common fields
+  fields.add("language_cert");
+  fields.add("entrance_exam");
+  fields.add("portfolio");
+  fields.add("research_plan");
+
+  // Master/PhD always need bachelor
+  if (programCategory === "master" || programCategory === "phd") {
+    fields.add("bachelor");
+  }
+
+  switch (certTypeSlug) {
+    case "arabic":
+      fields.add("hs_12years");
+      fields.add("gpa");
+      fields.add("sat");
+      break;
+    case "british":
+      fields.add("hs_12years");
+      fields.add("a_levels");
+      fields.add("sat");
+      break;
+    case "ib":
+      fields.add("hs_12years");
+      fields.add("ib");
+      fields.add("sat");
+      break;
+    case "american":
+      fields.add("hs_12years");
+      fields.add("gpa");
+      fields.add("sat");
+      break;
+    default:
+      // Unknown cert type → show everything
+      fields.add("hs_12years");
+      fields.add("gpa");
+      fields.add("sat");
+      fields.add("a_levels");
+      fields.add("ib");
+      fields.add("bachelor");
+      break;
+  }
+
+  return fields;
+}
+
+const LANGUAGE_CERT_TYPES = ["IELTS", "TOEFL", "Duolingo", "Cambridge", "PTE"];
 
 /* ------------------------------------------------------------------ */
 /*  Helpers                                                            */
@@ -154,6 +228,9 @@ function mapRowToReqs(row: Record<string, unknown>): Requirements {
     requires_ib: (row.requires_ib as boolean) ?? false,
     ib_min_points: (row.ib_min_points as number | null) ?? null,
     ib_effect: (row.ib_effect as string | null) ?? null,
+    requires_language_cert: (row.requires_language_cert as boolean) ?? false,
+    accepted_language_certs: (row.accepted_language_certs as LanguageCertEntry[] | null) ?? null,
+    language_cert_effect: (row.language_cert_effect as string | null) ?? null,
   };
 }
 
@@ -223,6 +300,12 @@ export default function EditProgramPage({
   const activeTab = tabs[activeTabIndex] || null;
   const reqs = activeTab?.reqs || defaultReqs;
   const customReqs = activeTab?.customReqs || [];
+
+  // Get cert type slug for field visibility
+  const activeCertSlug = activeTab?.certTypeId
+    ? certTypes.find((ct) => ct.id === activeTab.certTypeId)?.slug || null
+    : null;
+  const visibleFields = getVisibleFields(activeCertSlug, category);
 
   const loadData = useCallback(async () => {
     const [programRes, reqRes, customRes, certRes, majorsRes] = await Promise.all([
@@ -519,6 +602,57 @@ export default function EditProgramPage({
             }
             return { ...cr, option_effects: oe };
           }),
+        };
+      })
+    );
+  }
+
+  /* ---------------------------------------------------------------- */
+  /*  Language certificate helpers                                      */
+  /* ---------------------------------------------------------------- */
+
+  function addLanguageCert() {
+    setTabs((prev) =>
+      prev.map((tab, i) => {
+        if (i !== activeTabIndex) return tab;
+        const current = tab.reqs.accepted_language_certs || [];
+        return {
+          ...tab,
+          reqs: {
+            ...tab.reqs,
+            accepted_language_certs: [...current, { type: "IELTS", min_score: 0 }],
+          },
+        };
+      })
+    );
+  }
+
+  function removeLanguageCert(certIndex: number) {
+    setTabs((prev) =>
+      prev.map((tab, i) => {
+        if (i !== activeTabIndex) return tab;
+        const current = tab.reqs.accepted_language_certs || [];
+        const updated = current.filter((_, j) => j !== certIndex);
+        return {
+          ...tab,
+          reqs: {
+            ...tab.reqs,
+            accepted_language_certs: updated.length > 0 ? updated : null,
+          },
+        };
+      })
+    );
+  }
+
+  function updateLanguageCert(certIndex: number, field: "type" | "min_score", value: string | number) {
+    setTabs((prev) =>
+      prev.map((tab, i) => {
+        if (i !== activeTabIndex) return tab;
+        const current = [...(tab.reqs.accepted_language_certs || [])];
+        current[certIndex] = { ...current[certIndex], [field]: value };
+        return {
+          ...tab,
+          reqs: { ...tab.reqs, accepted_language_certs: current },
         };
       })
     );
@@ -1069,111 +1203,222 @@ export default function EditProgramPage({
           <h2 className="text-lg font-semibold text-white">{t("admin.requirements")}</h2>
 
           <div className="space-y-3">
-            <Toggle label={t("admin.requiresHS")} checked={reqs.requires_hs} onChange={(v) => updateReq("requires_hs", v)} />
-            <Toggle label={t("admin.requires12Years")} checked={reqs.requires_12_years} onChange={(v) => updateReq("requires_12_years", v)} />
-            <Toggle label={t("admin.requiresBachelor")} checked={reqs.requires_bachelor} onChange={(v) => updateReq("requires_bachelor", v)} />
-
-            <Toggle label={t("admin.requiresIELTS")} checked={reqs.requires_ielts} onChange={(v) => updateReq("requires_ielts", v)} />
-            {reqs.requires_ielts && (
-              <div className="mr-8 grid gap-4 sm:grid-cols-2">
-                <div>
-                  <label className="block text-xs text-slate-400 mb-1">{t("admin.ieltsMin")}</label>
-                  <input type="number" step="0.5" value={reqs.ielts_min ?? ""} onChange={(e) => updateReq("ielts_min", e.target.value ? Number(e.target.value) : null)} className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white focus:border-blue-500 focus:outline-none" />
-                </div>
-                <div>
-                  <label className="block text-xs text-slate-400 mb-1">{t("admin.ieltsEffect")}</label>
-                  <select value={reqs.ielts_effect || ""} onChange={(e) => updateReq("ielts_effect", e.target.value || null)} className="w-full rounded-lg border border-white/10 bg-[#0f1c2e] px-3 py-2 text-sm text-white focus:border-blue-500 focus:outline-none">
-                    <option value="" className="bg-[#0f1c2e] text-white">—</option>
-                    <option value="blocks_if_below" className="bg-[#0f1c2e] text-white">{t("admin.blocksIfBelow")}</option>
-                    <option value="conditional" className="bg-[#0f1c2e] text-white">{t("admin.conditional")}</option>
-                  </select>
-                </div>
-              </div>
+            {/* --- HS / 12 years --- */}
+            {visibleFields.has("hs_12years") && (
+              <>
+                <Toggle label={t("admin.requiresHS")} checked={reqs.requires_hs} onChange={(v) => updateReq("requires_hs", v)} />
+                <Toggle label={t("admin.requires12Years")} checked={reqs.requires_12_years} onChange={(v) => updateReq("requires_12_years", v)} />
+              </>
             )}
 
-            <Toggle label={t("admin.requiresSAT")} checked={reqs.requires_sat} onChange={(v) => updateReq("requires_sat", v)} />
-            {reqs.requires_sat && (
-              <div className="mr-8 grid gap-4 sm:grid-cols-2">
-                <div>
-                  <label className="block text-xs text-slate-400 mb-1">{t("admin.satMin")}</label>
-                  <input type="number" value={reqs.sat_min ?? ""} onChange={(e) => updateReq("sat_min", e.target.value ? Number(e.target.value) : null)} className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white focus:border-blue-500 focus:outline-none" />
-                </div>
-                <div>
-                  <label className="block text-xs text-slate-400 mb-1">{t("admin.satEffect")}</label>
-                  <select value={reqs.sat_effect || ""} onChange={(e) => updateReq("sat_effect", e.target.value || null)} className="w-full rounded-lg border border-white/10 bg-[#0f1c2e] px-3 py-2 text-sm text-white focus:border-blue-500 focus:outline-none">
-                    <option value="" className="bg-[#0f1c2e] text-white">—</option>
-                    <option value="blocks_if_below" className="bg-[#0f1c2e] text-white">{t("admin.blocksIfBelow")}</option>
-                    <option value="conditional" className="bg-[#0f1c2e] text-white">{t("admin.conditional")}</option>
-                  </select>
-                </div>
-              </div>
+            {/* --- Bachelor --- */}
+            {visibleFields.has("bachelor") && (
+              <Toggle label={t("admin.requiresBachelor")} checked={reqs.requires_bachelor} onChange={(v) => updateReq("requires_bachelor", v)} />
             )}
 
-            <Toggle label={t("admin.requiresGPA")} checked={reqs.requires_gpa} onChange={(v) => updateReq("requires_gpa", v)} />
-            {reqs.requires_gpa && (
-              <div className="mr-8">
-                <label className="block text-xs text-slate-400 mb-1">{t("admin.gpaMin")}</label>
-                <input type="number" step="0.01" value={reqs.gpa_min ?? ""} onChange={(e) => updateReq("gpa_min", e.target.value ? Number(e.target.value) : null)} className="w-40 rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white focus:border-blue-500 focus:outline-none" />
-              </div>
+            {/* --- GPA --- */}
+            {visibleFields.has("gpa") && (
+              <>
+                <Toggle label={t("admin.requiresGPA")} checked={reqs.requires_gpa} onChange={(v) => updateReq("requires_gpa", v)} />
+                {reqs.requires_gpa && (
+                  <div className="mr-8">
+                    <label className="block text-xs text-slate-400 mb-1">{t("admin.gpaMin")}</label>
+                    <input type="number" step="0.01" value={reqs.gpa_min ?? ""} onChange={(e) => updateReq("gpa_min", e.target.value ? Number(e.target.value) : null)} className="w-40 rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white focus:border-blue-500 focus:outline-none" />
+                  </div>
+                )}
+              </>
             )}
 
-            <Toggle label={t("admin.requiresEntranceExam")} checked={reqs.requires_entrance_exam} onChange={(v) => updateReq("requires_entrance_exam", v)} />
-            <Toggle label={t("admin.requiresPortfolio")} checked={reqs.requires_portfolio} onChange={(v) => updateReq("requires_portfolio", v)} />
-            <Toggle label={t("admin.requiresResearchPlan")} checked={reqs.requires_research_plan} onChange={(v) => updateReq("requires_research_plan", v)} />
-
-            {/* --- A Level (British certificates) --- */}
-            <div className="border-t border-white/10 pt-3 mt-3">
-              <p className="text-xs font-medium text-slate-400 mb-2">{t("admin.britishRequirements")}</p>
-              <Toggle label={t("admin.requiresALevels")} checked={reqs.requires_a_levels} onChange={(v) => updateReq("requires_a_levels", v)} />
-              {reqs.requires_a_levels && (
-                <div className="mr-8 mt-2 space-y-3">
-                  <div className="grid gap-4 sm:grid-cols-3">
+            {/* --- Language Certificate (multi-cert) --- */}
+            {visibleFields.has("language_cert") && (
+              <div className="border-t border-white/10 pt-3 mt-3">
+                <p className="text-xs font-medium text-slate-400 mb-2">{t("admin.languageCertRequirements")}</p>
+                <Toggle label={t("admin.requiresLanguageCert")} checked={reqs.requires_language_cert} onChange={(v) => updateReq("requires_language_cert", v)} />
+                {reqs.requires_language_cert && (
+                  <div className="mr-8 mt-2 space-y-3">
                     <div>
-                      <label className="block text-xs text-slate-400 mb-1">{t("admin.aLevelSubjectsMin")}</label>
-                      <input type="number" min="1" max="10" value={reqs.a_level_subjects_min ?? ""} onChange={(e) => updateReq("a_level_subjects_min", e.target.value ? Number(e.target.value) : null)} className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white focus:border-blue-500 focus:outline-none" />
-                    </div>
-                    <div>
-                      <label className="block text-xs text-slate-400 mb-1">{t("admin.aLevelMinGrade")}</label>
-                      <select value={reqs.a_level_min_grade || ""} onChange={(e) => updateReq("a_level_min_grade", e.target.value || null)} className="w-full rounded-lg border border-white/10 bg-[#0f1c2e] px-3 py-2 text-sm text-white focus:border-blue-500 focus:outline-none">
-                        <option value="" className="bg-[#0f1c2e] text-white">—</option>
-                        {["A*", "A", "B", "C", "D", "E"].map((g) => (
-                          <option key={g} value={g} className="bg-[#0f1c2e] text-white">{g}</option>
-                        ))}
+                      <label className="block text-xs text-slate-400 mb-1">{t("admin.languageCertEffect")}</label>
+                      <select value={reqs.language_cert_effect || "blocks_if_below"} onChange={(e) => updateReq("language_cert_effect", e.target.value)} className="w-64 rounded-lg border border-white/10 bg-[#0f1c2e] px-3 py-2 text-sm text-white focus:border-blue-500 focus:outline-none">
+                        <option value="blocks_if_below" className="bg-[#0f1c2e] text-white">{t("admin.blocksIfBelow")}</option>
+                        <option value="conditional" className="bg-[#0f1c2e] text-white">{t("admin.conditional")}</option>
+                        <option value="interview" className="bg-[#0f1c2e] text-white">{t("admin.interviewEffect")}</option>
                       </select>
                     </div>
+
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <label className="text-xs font-medium text-slate-400">{t("admin.acceptedLanguageCerts")}</label>
+                        <button type="button" onClick={addLanguageCert} className="text-xs text-blue-400 hover:text-blue-300">
+                          + {t("admin.addLanguageCert")}
+                        </button>
+                      </div>
+                      {(reqs.accepted_language_certs || []).map((cert, cIdx) => (
+                        <div key={cIdx} className="flex items-center gap-2">
+                          <select
+                            value={cert.type}
+                            onChange={(e) => updateLanguageCert(cIdx, "type", e.target.value)}
+                            className="w-40 rounded-lg border border-white/10 bg-[#0f1c2e] px-3 py-1.5 text-sm text-white focus:border-blue-500 focus:outline-none"
+                          >
+                            {LANGUAGE_CERT_TYPES.map((t) => (
+                              <option key={t} value={t} className="bg-[#0f1c2e] text-white">{t}</option>
+                            ))}
+                          </select>
+                          <input
+                            type="number"
+                            step="0.5"
+                            value={cert.min_score || ""}
+                            onChange={(e) => updateLanguageCert(cIdx, "min_score", e.target.value ? Number(e.target.value) : 0)}
+                            placeholder={t("admin.minScore")}
+                            className="w-24 rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-sm text-white focus:border-blue-500 focus:outline-none"
+                          />
+                          <button type="button" onClick={() => removeLanguageCert(cIdx)} className="text-xs text-red-400 hover:text-red-300">
+                            {t("admin.removeOption")}
+                          </button>
+                        </div>
+                      ))}
+                      {(!reqs.accepted_language_certs || reqs.accepted_language_certs.length === 0) && (
+                        <p className="text-xs text-slate-500">—</p>
+                      )}
+                    </div>
+
+                    {/* Legacy IELTS fields — show if they have data */}
+                    {reqs.requires_ielts && (
+                      <div className="rounded-lg border border-yellow-500/20 bg-yellow-500/5 p-3">
+                        <p className="text-xs text-yellow-400 mb-2">{t("admin.legacyIeltsNote")}</p>
+                        <div className="grid gap-4 sm:grid-cols-2">
+                          <div>
+                            <label className="block text-xs text-slate-400 mb-1">{t("admin.ieltsMin")}</label>
+                            <input type="number" step="0.5" value={reqs.ielts_min ?? ""} onChange={(e) => updateReq("ielts_min", e.target.value ? Number(e.target.value) : null)} className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white focus:border-blue-500 focus:outline-none" />
+                          </div>
+                          <div>
+                            <label className="block text-xs text-slate-400 mb-1">{t("admin.ieltsEffect")}</label>
+                            <select value={reqs.ielts_effect || ""} onChange={(e) => updateReq("ielts_effect", e.target.value || null)} className="w-full rounded-lg border border-white/10 bg-[#0f1c2e] px-3 py-2 text-sm text-white focus:border-blue-500 focus:outline-none">
+                              <option value="" className="bg-[#0f1c2e] text-white">—</option>
+                              <option value="blocks_if_below" className="bg-[#0f1c2e] text-white">{t("admin.blocksIfBelow")}</option>
+                              <option value="conditional" className="bg-[#0f1c2e] text-white">{t("admin.conditional")}</option>
+                            </select>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+                {/* Show legacy IELTS toggle if language cert is NOT enabled */}
+                {!reqs.requires_language_cert && (
+                  <>
+                    <Toggle label={t("admin.requiresIELTS")} checked={reqs.requires_ielts} onChange={(v) => updateReq("requires_ielts", v)} />
+                    {reqs.requires_ielts && (
+                      <div className="mr-8 grid gap-4 sm:grid-cols-2">
+                        <div>
+                          <label className="block text-xs text-slate-400 mb-1">{t("admin.ieltsMin")}</label>
+                          <input type="number" step="0.5" value={reqs.ielts_min ?? ""} onChange={(e) => updateReq("ielts_min", e.target.value ? Number(e.target.value) : null)} className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white focus:border-blue-500 focus:outline-none" />
+                        </div>
+                        <div>
+                          <label className="block text-xs text-slate-400 mb-1">{t("admin.ieltsEffect")}</label>
+                          <select value={reqs.ielts_effect || ""} onChange={(e) => updateReq("ielts_effect", e.target.value || null)} className="w-full rounded-lg border border-white/10 bg-[#0f1c2e] px-3 py-2 text-sm text-white focus:border-blue-500 focus:outline-none">
+                            <option value="" className="bg-[#0f1c2e] text-white">—</option>
+                            <option value="blocks_if_below" className="bg-[#0f1c2e] text-white">{t("admin.blocksIfBelow")}</option>
+                            <option value="conditional" className="bg-[#0f1c2e] text-white">{t("admin.conditional")}</option>
+                          </select>
+                        </div>
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+            )}
+
+            {/* --- SAT --- */}
+            {visibleFields.has("sat") && (
+              <>
+                <Toggle label={t("admin.requiresSAT")} checked={reqs.requires_sat} onChange={(v) => updateReq("requires_sat", v)} />
+                {reqs.requires_sat && (
+                  <div className="mr-8 grid gap-4 sm:grid-cols-2">
                     <div>
-                      <label className="block text-xs text-slate-400 mb-1">{t("admin.aLevelEffect")}</label>
-                      <select value={reqs.a_level_effect || "blocks_admission"} onChange={(e) => updateReq("a_level_effect", e.target.value)} className="w-full rounded-lg border border-white/10 bg-[#0f1c2e] px-3 py-2 text-sm text-white focus:border-blue-500 focus:outline-none">
+                      <label className="block text-xs text-slate-400 mb-1">{t("admin.satMin")}</label>
+                      <input type="number" value={reqs.sat_min ?? ""} onChange={(e) => updateReq("sat_min", e.target.value ? Number(e.target.value) : null)} className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white focus:border-blue-500 focus:outline-none" />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-slate-400 mb-1">{t("admin.satEffect")}</label>
+                      <select value={reqs.sat_effect || ""} onChange={(e) => updateReq("sat_effect", e.target.value || null)} className="w-full rounded-lg border border-white/10 bg-[#0f1c2e] px-3 py-2 text-sm text-white focus:border-blue-500 focus:outline-none">
+                        <option value="" className="bg-[#0f1c2e] text-white">—</option>
+                        <option value="blocks_if_below" className="bg-[#0f1c2e] text-white">{t("admin.blocksIfBelow")}</option>
+                        <option value="conditional" className="bg-[#0f1c2e] text-white">{t("admin.conditional")}</option>
+                      </select>
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
+
+            {/* --- Entrance exam / Portfolio / Research plan --- */}
+            {visibleFields.has("entrance_exam") && (
+              <Toggle label={t("admin.requiresEntranceExam")} checked={reqs.requires_entrance_exam} onChange={(v) => updateReq("requires_entrance_exam", v)} />
+            )}
+            {visibleFields.has("portfolio") && (
+              <Toggle label={t("admin.requiresPortfolio")} checked={reqs.requires_portfolio} onChange={(v) => updateReq("requires_portfolio", v)} />
+            )}
+            {visibleFields.has("research_plan") && (
+              <Toggle label={t("admin.requiresResearchPlan")} checked={reqs.requires_research_plan} onChange={(v) => updateReq("requires_research_plan", v)} />
+            )}
+
+            {/* --- A Level (British certificates) --- */}
+            {visibleFields.has("a_levels") && (
+              <div className="border-t border-white/10 pt-3 mt-3">
+                <p className="text-xs font-medium text-slate-400 mb-2">{t("admin.britishRequirements")}</p>
+                <Toggle label={t("admin.requiresALevels")} checked={reqs.requires_a_levels} onChange={(v) => updateReq("requires_a_levels", v)} />
+                {reqs.requires_a_levels && (
+                  <div className="mr-8 mt-2 space-y-3">
+                    <div className="grid gap-4 sm:grid-cols-3">
+                      <div>
+                        <label className="block text-xs text-slate-400 mb-1">{t("admin.aLevelSubjectsMin")}</label>
+                        <input type="number" min="1" max="10" value={reqs.a_level_subjects_min ?? ""} onChange={(e) => updateReq("a_level_subjects_min", e.target.value ? Number(e.target.value) : null)} className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white focus:border-blue-500 focus:outline-none" />
+                      </div>
+                      <div>
+                        <label className="block text-xs text-slate-400 mb-1">{t("admin.aLevelMinGrade")}</label>
+                        <select value={reqs.a_level_min_grade || ""} onChange={(e) => updateReq("a_level_min_grade", e.target.value || null)} className="w-full rounded-lg border border-white/10 bg-[#0f1c2e] px-3 py-2 text-sm text-white focus:border-blue-500 focus:outline-none">
+                          <option value="" className="bg-[#0f1c2e] text-white">—</option>
+                          {["A*", "A", "B", "C", "D", "E"].map((g) => (
+                            <option key={g} value={g} className="bg-[#0f1c2e] text-white">{g}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-xs text-slate-400 mb-1">{t("admin.aLevelEffect")}</label>
+                        <select value={reqs.a_level_effect || "blocks_admission"} onChange={(e) => updateReq("a_level_effect", e.target.value)} className="w-full rounded-lg border border-white/10 bg-[#0f1c2e] px-3 py-2 text-sm text-white focus:border-blue-500 focus:outline-none">
+                          <option value="blocks_admission" className="bg-[#0f1c2e] text-white">{t("admin.blocks")}</option>
+                          <option value="makes_conditional" className="bg-[#0f1c2e] text-white">{t("admin.conditional")}</option>
+                        </select>
+                      </div>
+                    </div>
+                    <Toggle label={t("admin.aLevelRequiresCore")} checked={reqs.a_level_requires_core} onChange={(v) => updateReq("a_level_requires_core", v)} />
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* --- IB (International Baccalaureate) --- */}
+            {visibleFields.has("ib") && (
+              <div className="border-t border-white/10 pt-3 mt-3">
+                <p className="text-xs font-medium text-slate-400 mb-2">{t("admin.ibRequirements")}</p>
+                <Toggle label={t("admin.requiresIB")} checked={reqs.requires_ib} onChange={(v) => updateReq("requires_ib", v)} />
+                {reqs.requires_ib && (
+                  <div className="mr-8 mt-2 grid gap-4 sm:grid-cols-2">
+                    <div>
+                      <label className="block text-xs text-slate-400 mb-1">{t("admin.ibMinPoints")}</label>
+                      <input type="number" min="0" max="45" value={reqs.ib_min_points ?? ""} onChange={(e) => updateReq("ib_min_points", e.target.value ? Number(e.target.value) : null)} className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white focus:border-blue-500 focus:outline-none" />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-slate-400 mb-1">{t("admin.ibEffect")}</label>
+                      <select value={reqs.ib_effect || "blocks_admission"} onChange={(e) => updateReq("ib_effect", e.target.value)} className="w-full rounded-lg border border-white/10 bg-[#0f1c2e] px-3 py-2 text-sm text-white focus:border-blue-500 focus:outline-none">
                         <option value="blocks_admission" className="bg-[#0f1c2e] text-white">{t("admin.blocks")}</option>
                         <option value="makes_conditional" className="bg-[#0f1c2e] text-white">{t("admin.conditional")}</option>
                       </select>
                     </div>
                   </div>
-                  <Toggle label={t("admin.aLevelRequiresCore")} checked={reqs.a_level_requires_core} onChange={(v) => updateReq("a_level_requires_core", v)} />
-                </div>
-              )}
-            </div>
-
-            {/* --- IB (International Baccalaureate) --- */}
-            <div className="border-t border-white/10 pt-3 mt-3">
-              <p className="text-xs font-medium text-slate-400 mb-2">{t("admin.ibRequirements")}</p>
-              <Toggle label={t("admin.requiresIB")} checked={reqs.requires_ib} onChange={(v) => updateReq("requires_ib", v)} />
-              {reqs.requires_ib && (
-                <div className="mr-8 mt-2 grid gap-4 sm:grid-cols-2">
-                  <div>
-                    <label className="block text-xs text-slate-400 mb-1">{t("admin.ibMinPoints")}</label>
-                    <input type="number" min="0" max="45" value={reqs.ib_min_points ?? ""} onChange={(e) => updateReq("ib_min_points", e.target.value ? Number(e.target.value) : null)} className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white focus:border-blue-500 focus:outline-none" />
-                  </div>
-                  <div>
-                    <label className="block text-xs text-slate-400 mb-1">{t("admin.ibEffect")}</label>
-                    <select value={reqs.ib_effect || "blocks_admission"} onChange={(e) => updateReq("ib_effect", e.target.value)} className="w-full rounded-lg border border-white/10 bg-[#0f1c2e] px-3 py-2 text-sm text-white focus:border-blue-500 focus:outline-none">
-                      <option value="blocks_admission" className="bg-[#0f1c2e] text-white">{t("admin.blocks")}</option>
-                      <option value="makes_conditional" className="bg-[#0f1c2e] text-white">{t("admin.conditional")}</option>
-                    </select>
-                  </div>
-                </div>
-              )}
-            </div>
+                )}
+              </div>
+            )}
           </div>
 
           <div>
