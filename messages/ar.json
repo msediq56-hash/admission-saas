@@ -220,7 +220,10 @@
     "saveMajors": "حفظ التخصصات",
     "options": "الخيارات",
     "addOption": "إضافة خيار",
-    "removeOption": "حذف"
+    "removeOption": "حذف",
+    "deactivateProgram": "تعطيل البرنامج",
+    "activateProgram": "تفعيل البرنامج",
+    "programInactive": "غير نشط"
   },
   "users": {
     "title": "إدارة المستخدمين",

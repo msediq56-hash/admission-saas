@@ -21,6 +21,8 @@ export async function PATCH(
       updates.certificate_type_id = program.certificate_type_id || null;
     if (program.complexity_level !== undefined)
       updates.complexity_level = program.complexity_level;
+    if (program.is_active !== undefined)
+      updates.is_active = program.is_active;
 
     const { error: progError } = await supabase
       .from("programs")

@@ -20,6 +20,7 @@ interface OptionEffect {
 
 interface CustomRequirement {
   id?: string;
+  certificate_type_id?: string | null;
   question_text: string;
   question_type: "yes_no" | "select";
   options?: string[];
@@ -122,6 +123,7 @@ export default function EditProgramPage({
   const [customReqs, setCustomReqs] = useState<CustomRequirement[]>([]);
   const [certTypes, setCertTypes] = useState<CertificateType[]>([]);
   const [majors, setMajors] = useState<MajorData[]>([]);
+  const [isActive, setIsActive] = useState(true);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [savingMajors, setSavingMajors] = useState(false);
@@ -139,14 +141,13 @@ export default function EditProgramPage({
     const [programRes, reqRes, customRes, certRes, majorsRes] = await Promise.all([
       supabase
         .from("programs")
-        .select("name, category, certificate_type_id, complexity_level")
+        .select("name, category, certificate_type_id, complexity_level, is_active")
         .eq("id", programId)
         .single(),
       supabase
         .from("requirements")
         .select("*")
-        .eq("program_id", programId)
-        .single(),
+        .eq("program_id", programId),
       supabase
         .from("custom_requirements")
         .select("*")
@@ -168,25 +169,28 @@ export default function EditProgramPage({
       setCategory(programRes.data.category);
       setCertificateTypeId(programRes.data.certificate_type_id);
       setOriginalComplexity(programRes.data.complexity_level || "simple");
+      setIsActive(programRes.data.is_active ?? true);
     }
 
-    if (reqRes.data) {
+    // Requirements may have multiple rows (one per cert type) — use first row
+    const reqRow = reqRes.data && reqRes.data.length > 0 ? reqRes.data[0] : null;
+    if (reqRow) {
       setReqs({
-        requires_hs: reqRes.data.requires_hs ?? false,
-        requires_12_years: reqRes.data.requires_12_years ?? false,
-        requires_bachelor: reqRes.data.requires_bachelor ?? false,
-        requires_ielts: reqRes.data.requires_ielts ?? false,
-        ielts_min: reqRes.data.ielts_min,
-        ielts_effect: reqRes.data.ielts_effect,
-        requires_sat: reqRes.data.requires_sat ?? false,
-        sat_min: reqRes.data.sat_min,
-        sat_effect: reqRes.data.sat_effect,
-        requires_gpa: reqRes.data.requires_gpa ?? false,
-        gpa_min: reqRes.data.gpa_min,
-        requires_entrance_exam: reqRes.data.requires_entrance_exam ?? false,
-        requires_portfolio: reqRes.data.requires_portfolio ?? false,
-        requires_research_plan: reqRes.data.requires_research_plan ?? false,
-        result_notes: reqRes.data.result_notes,
+        requires_hs: reqRow.requires_hs ?? false,
+        requires_12_years: reqRow.requires_12_years ?? false,
+        requires_bachelor: reqRow.requires_bachelor ?? false,
+        requires_ielts: reqRow.requires_ielts ?? false,
+        ielts_min: reqRow.ielts_min,
+        ielts_effect: reqRow.ielts_effect,
+        requires_sat: reqRow.requires_sat ?? false,
+        sat_min: reqRow.sat_min,
+        sat_effect: reqRow.sat_effect,
+        requires_gpa: reqRow.requires_gpa ?? false,
+        gpa_min: reqRow.gpa_min,
+        requires_entrance_exam: reqRow.requires_entrance_exam ?? false,
+        requires_portfolio: reqRow.requires_portfolio ?? false,
+        requires_research_plan: reqRow.requires_research_plan ?? false,
+        result_notes: reqRow.result_notes,
       });
     }
 
@@ -194,6 +198,7 @@ export default function EditProgramPage({
       setCustomReqs(
         customRes.data.map((cr) => ({
           id: cr.id,
+          certificate_type_id: cr.certificate_type_id || null,
           question_text: cr.question_text,
           question_type: cr.question_type,
           options: cr.options || undefined,
@@ -474,6 +479,7 @@ export default function EditProgramPage({
           category,
           certificate_type_id: certificateTypeId,
           complexity_level: computedComplexity,
+          is_active: isActive,
         },
         requirements: reqs,
         custom_requirements: customReqs.map((cr, i) => ({ ...cr, sort_order: i + 1 })),
@@ -553,16 +559,36 @@ export default function EditProgramPage({
         {t("admin.backToUniversity")}
       </Link>
 
-      <h1 className="text-2xl font-bold text-white mb-8">
-        {t("admin.editProgram")}
-      </h1>
+      <div className="flex items-center gap-4 mb-8">
+        <h1 className="text-2xl font-bold text-white">
+          {t("admin.editProgram")}
+        </h1>
+        {!isActive && (
+          <span className="rounded-full bg-red-500/15 px-3 py-1 text-sm font-medium text-red-400">
+            {t("admin.programInactive")}
+          </span>
+        )}
+      </div>
 
       <form onSubmit={handleSubmit} className="space-y-8">
         {/* ============ Program Info ============ */}
         <section className="rounded-xl border border-white/10 bg-white/5 p-6 space-y-4">
-          <h2 className="text-lg font-semibold text-white">
-            {t("admin.programInfo")}
-          </h2>
+          <div className="flex items-center justify-between">
+            <h2 className="text-lg font-semibold text-white">
+              {t("admin.programInfo")}
+            </h2>
+            <button
+              type="button"
+              onClick={() => setIsActive(!isActive)}
+              className={`rounded-lg px-4 py-2 text-sm font-medium transition ${
+                isActive
+                  ? "bg-red-500/15 text-red-400 hover:bg-red-500/25"
+                  : "bg-green-500/15 text-green-400 hover:bg-green-500/25"
+              }`}
+            >
+              {isActive ? t("admin.deactivateProgram") : t("admin.activateProgram")}
+            </button>
+          </div>
 
           <div>
             <label className="block text-sm font-medium text-slate-300 mb-2">
