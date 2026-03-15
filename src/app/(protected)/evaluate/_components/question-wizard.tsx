@@ -66,6 +66,23 @@ export function QuestionWizard({
                 {t("evaluation.no")}
               </button>
             </div>
+          ) : currentQ.options && currentQ.options.length > 6 ? (
+            <select
+              className="w-full rounded-xl border border-white/10 bg-white/5 px-6 py-4 text-base text-white appearance-none cursor-pointer"
+              defaultValue=""
+              onChange={(e) => {
+                if (e.target.value) onAnswer(e.target.value);
+              }}
+            >
+              <option value="" disabled>
+                {t("evaluation.selectOption")}
+              </option>
+              {currentQ.options.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))}
+            </select>
           ) : (
             <div className="space-y-3">
               {currentQ.options?.map((opt) => (

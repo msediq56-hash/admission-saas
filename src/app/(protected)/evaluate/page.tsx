@@ -6,6 +6,7 @@ import { createSupabaseBrowserClient } from "@/lib/supabase-browser";
 import { useAuth } from "@/lib/auth-context";
 import {
   buildQuestionsFromRequirements,
+  buildMajorSubjectQuestions,
   evaluateAnswers,
   type EvaluationQuestion,
   type EvaluationAnswer,
@@ -13,6 +14,8 @@ import {
   type Requirement,
   type CustomRequirement,
   type ScholarshipTier,
+  type Major,
+  type MajorSubjectRequirement,
 } from "@/lib/evaluation-engine";
 import {
   CountryStep,
@@ -73,6 +76,7 @@ export default function EvaluatePage() {
     number | null
   >(null);
   const [result, setResult] = useState<EvaluationResult | null>(null);
+  const [majors, setMajors] = useState<Major[]>([]);
   const [loading, setLoading] = useState(false);
 
   // Fetch all universities once
@@ -131,7 +135,7 @@ export default function EvaluatePage() {
   const fetchAndBuildQuestions = useCallback(
     async (programId: string) => {
       setLoading(true);
-      const [reqRes, customRes, scholarshipRes] = await Promise.all([
+      const [reqRes, customRes, scholarshipRes, majorsRes] = await Promise.all([
         supabase
           .from("requirements")
           .select("*")
@@ -147,15 +151,23 @@ export default function EvaluatePage() {
           .select("*")
           .eq("program_id", programId)
           .order("sort_order"),
+        supabase
+          .from("majors")
+          .select("id, name_ar, name_en, group_code")
+          .eq("program_id", programId)
+          .eq("is_active", true)
+          .order("sort_order"),
       ]);
 
       const req = (reqRes.data as Requirement) || {};
       const customReqs = (customRes.data as CustomRequirement[]) || [];
       const tiers = (scholarshipRes.data as ScholarshipTier[]) || [];
+      const fetchedMajors = (majorsRes.data as Major[]) || [];
 
       setRequirementData({ req, customReqs, scholarshipTiers: tiers });
+      setMajors(fetchedMajors);
 
-      const built = buildQuestionsFromRequirements(req, customReqs, tiers);
+      const built = buildQuestionsFromRequirements(req, customReqs, tiers, fetchedMajors);
       setQuestions(built);
       setCurrentQuestionIndex(0);
       setAnswers([]);
@@ -201,9 +213,9 @@ export default function EvaluatePage() {
     fetchAndBuildQuestions(prog.id);
   }
 
-  function handleAnswer(value: string) {
+  async function handleAnswer(value: string) {
     const currentQ = questions[currentQuestionIndex];
-    const newAnswers = [
+    let newAnswers = [
       ...answers.filter((a) => a.questionId !== currentQ.id),
       { questionId: currentQ.id, value },
     ];
@@ -223,7 +235,48 @@ export default function EvaluatePage() {
       return;
     }
 
-    if (currentQuestionIndex < questions.length - 1) {
+    // Two-phase: if this is a major select, fetch subject requirements
+    let updatedQuestions = questions;
+    if (currentQ.sourceField === "major_select") {
+      // Remove previously injected subject questions and their answers
+      const withoutSubject = questions.filter((q) => !q.id.startsWith("subject_"));
+      newAnswers = newAnswers.filter(
+        (a) => !a.questionId.startsWith("subject_")
+      );
+      setAnswers(newAnswers);
+
+      const selectedMajor = majors.find((m) => m.id === value);
+      if (selectedMajor) {
+        setLoading(true);
+        const { data: subjectReqs } = await supabase
+          .from("major_subject_requirements")
+          .select("*")
+          .eq("major_id", selectedMajor.id)
+          .order("sort_order");
+        setLoading(false);
+
+        if (subjectReqs && subjectReqs.length > 0) {
+          const subjectQuestions = buildMajorSubjectQuestions(
+            subjectReqs as MajorSubjectRequirement[]
+          );
+          const majorIdx = withoutSubject.findIndex(
+            (q) => q.sourceField === "major_select"
+          );
+          updatedQuestions = [
+            ...withoutSubject.slice(0, majorIdx + 1),
+            ...subjectQuestions,
+            ...withoutSubject.slice(majorIdx + 1),
+          ];
+        } else {
+          updatedQuestions = withoutSubject;
+        }
+      } else {
+        updatedQuestions = withoutSubject;
+      }
+      setQuestions(updatedQuestions);
+    }
+
+    if (currentQuestionIndex < updatedQuestions.length - 1) {
       setCurrentQuestionIndex(currentQuestionIndex + 1);
     } else {
       setBlockedAtQuestionIndex(null);
@@ -232,7 +285,7 @@ export default function EvaluatePage() {
         requirementData!.req,
         requirementData!.customReqs,
         requirementData!.scholarshipTiers,
-        questions
+        updatedQuestions
       );
       setResult(evalResult);
       setStep("result");
@@ -302,6 +355,7 @@ export default function EvaluatePage() {
     setCurrentQuestionIndex(0);
     setBlockedAtQuestionIndex(null);
     setRequirementData(null);
+    setMajors([]);
   }
 
   // Step indicator

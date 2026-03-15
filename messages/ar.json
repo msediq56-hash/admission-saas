@@ -109,7 +109,8 @@
     "scholarship": "المنحة",
     "step": "الخطوة",
     "noPrograms": "لا توجد برامج لهذه الجامعة",
-    "loadingProgram": "جاري تحميل بيانات البرنامج..."
+    "loadingProgram": "جاري تحميل بيانات البرنامج...",
+    "selectOption": "اختر..."
   },
   "comparison": {
     "title": "مقارنة البرامج",

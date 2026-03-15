@@ -79,6 +79,26 @@ export interface ScholarshipTier {
   sort_order: number;
 }
 
+export interface Major {
+  id: string;
+  name_ar: string;
+  name_en?: string;
+  group_code: string;
+}
+
+export interface MajorSubjectRequirement {
+  id: string;
+  major_id: string;
+  certificate_type_id: string;
+  question_text: string;
+  question_type: "yes_no" | "select";
+  options?: string[] | null;
+  effect: "blocks_admission" | "makes_conditional";
+  negative_message?: string;
+  positive_message?: string;
+  sort_order: number;
+}
+
 // -----------------------------------------------------------
 // Build IELTS alternatives text
 // -----------------------------------------------------------
@@ -100,7 +120,8 @@ function buildIeltsAlternativesText(
 export function buildQuestionsFromRequirements(
   req: Requirement,
   customReqs: CustomRequirement[],
-  scholarshipTiers: ScholarshipTier[]
+  scholarshipTiers: ScholarshipTier[],
+  majors?: Major[]
 ): EvaluationQuestion[] {
   const questions: EvaluationQuestion[] = [];
   let qIndex = 0;
@@ -212,7 +233,21 @@ export function buildQuestionsFromRequirements(
     });
   }
 
-  // 10. Custom requirements (sorted by sort_order)
+  // 10. Major select (if program has majors)
+  if (majors && majors.length > 0) {
+    questions.push({
+      id: `q_${qIndex++}`,
+      text: "اختر التخصص",
+      type: "select",
+      sourceField: "major_select",
+      options: majors.map((m) => ({
+        label: m.name_ar,
+        value: m.id,
+      })),
+    });
+  }
+
+  // 11. Custom requirements (sorted by sort_order)
   const sortedCustom = [...customReqs].sort(
     (a, b) => a.sort_order - b.sort_order
   );
@@ -228,6 +263,37 @@ export function buildQuestionsFromRequirements(
     };
     if (cr.question_type === "select" && cr.options) {
       q.options = (cr.options as string[]).map((opt) => ({
+        label: opt,
+        value: opt,
+      }));
+    }
+    questions.push(q);
+  }
+
+  return questions;
+}
+
+// -----------------------------------------------------------
+// Build subject requirement questions for a selected major
+// -----------------------------------------------------------
+export function buildMajorSubjectQuestions(
+  subjectReqs: MajorSubjectRequirement[]
+): EvaluationQuestion[] {
+  const questions: EvaluationQuestion[] = [];
+  const sorted = [...subjectReqs].sort((a, b) => a.sort_order - b.sort_order);
+
+  for (const sr of sorted) {
+    const q: EvaluationQuestion = {
+      id: `subject_${sr.id}`,
+      text: sr.question_text,
+      type: sr.question_type,
+      customEffect: sr.effect,
+      negativeMessage: sr.negative_message || undefined,
+      positiveMessage: sr.positive_message || undefined,
+      isBlocking: sr.effect === "blocks_admission",
+    };
+    if (sr.question_type === "select" && sr.options) {
+      q.options = (sr.options as string[]).map((opt) => ({
         label: opt,
         value: opt,
       }));
@@ -370,6 +436,10 @@ export function evaluateAnswers(
               description: "يحتاج تجهيز خطة بحث",
             });
           }
+          break;
+
+        case "major_select":
+          // Major selection — no evaluation logic, used for UI routing
           break;
       }
       continue;
