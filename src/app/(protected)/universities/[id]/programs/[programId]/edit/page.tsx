@@ -204,6 +204,8 @@ export default function EditProgramPage({
   const [savedMajors, setSavedMajors] = useState(false);
   const [error, setError] = useState("");
   const [majorsExpanded, setMajorsExpanded] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   if (!canEditUniversities(user.role)) {
     router.replace(`/universities/${universityId}`);
@@ -641,6 +643,30 @@ export default function EditProgramPage({
   }
 
   /* ---------------------------------------------------------------- */
+  /*  Delete handler                                                   */
+  /* ---------------------------------------------------------------- */
+
+  async function handleDeleteProgram() {
+    setDeleting(true);
+    setError("");
+    try {
+      const res = await fetch(`/api/admin/programs/${programId}`, {
+        method: "DELETE",
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        setError(data.error || "Delete failed");
+        setDeleting(false);
+        return;
+      }
+      router.replace(`/universities/${universityId}`);
+    } catch {
+      setError("Delete failed");
+      setDeleting(false);
+    }
+  }
+
+  /* ---------------------------------------------------------------- */
   /*  Save handlers                                                    */
   /* ---------------------------------------------------------------- */
 
@@ -785,17 +811,26 @@ export default function EditProgramPage({
             <h2 className="text-lg font-semibold text-white">
               {t("admin.programInfo")}
             </h2>
-            <button
-              type="button"
-              onClick={() => setIsActive(!isActive)}
-              className={`rounded-lg px-4 py-2 text-sm font-medium transition ${
-                isActive
-                  ? "bg-red-500/15 text-red-400 hover:bg-red-500/25"
-                  : "bg-green-500/15 text-green-400 hover:bg-green-500/25"
-              }`}
-            >
-              {isActive ? t("admin.deactivateProgram") : t("admin.activateProgram")}
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setIsActive(!isActive)}
+                className={`rounded-lg px-4 py-2 text-sm font-medium transition ${
+                  isActive
+                    ? "bg-red-500/15 text-red-400 hover:bg-red-500/25"
+                    : "bg-green-500/15 text-green-400 hover:bg-green-500/25"
+                }`}
+              >
+                {isActive ? t("admin.deactivateProgram") : t("admin.activateProgram")}
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowDeleteConfirm(true)}
+                className="rounded-lg bg-red-600/20 px-4 py-2 text-sm font-medium text-red-400 transition hover:bg-red-600/30 border border-red-500/20"
+              >
+                {t("admin.deleteProgramButton")}
+              </button>
+            </div>
           </div>
 
           <div className="grid gap-4 sm:grid-cols-2">
@@ -1329,6 +1364,38 @@ export default function EditProgramPage({
           </div>
         )}
       </section>
+
+      {/* ============ Delete Confirmation Dialog ============ */}
+      {showDeleteConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+          <div className="w-full max-w-md rounded-xl border border-white/10 bg-[#0f1c2e] p-6 shadow-xl">
+            <h3 className="text-lg font-bold text-white mb-3">
+              {t("admin.deleteProgramButton")}
+            </h3>
+            <p className="text-sm text-slate-300 mb-6">
+              {t("admin.confirmDeleteProgram")}
+            </p>
+            <div className="flex items-center gap-3 justify-end">
+              <button
+                type="button"
+                onClick={() => setShowDeleteConfirm(false)}
+                disabled={deleting}
+                className="rounded-lg bg-white/10 px-4 py-2 text-sm text-white transition hover:bg-white/20 disabled:opacity-50"
+              >
+                {t("common.cancel")}
+              </button>
+              <button
+                type="button"
+                onClick={handleDeleteProgram}
+                disabled={deleting}
+                className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-red-700 disabled:opacity-50"
+              >
+                {deleting ? t("admin.deleting") : t("admin.confirmDelete")}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
