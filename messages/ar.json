@@ -159,6 +159,8 @@
     "universityType": "النوع (حكومية/خاصة)",
     "programName": "اسم البرنامج",
     "programCategory": "نوع البرنامج",
+    "category": "نوع البرنامج",
+    "blocksIfBelow": "يمنع القبول إذا أقل",
     "certificateType": "نوع الشهادة",
     "requirements": "شروط القبول",
     "customRequirements": "شروط مخصصة",
