@@ -75,7 +75,7 @@ export default function EditProgramPage({
   const [programName, setProgramName] = useState("");
   const [category, setCategory] = useState("bachelor");
   const [certificateTypeId, setCertificateTypeId] = useState<string | null>(null);
-  const [complexityLevel, setComplexityLevel] = useState("simple");
+  const [originalComplexity, setOriginalComplexity] = useState("simple");
   const [reqs, setReqs] = useState<Requirements>(defaultReqs);
   const [customReqs, setCustomReqs] = useState<CustomRequirement[]>([]);
   const [certTypes, setCertTypes] = useState<CertificateType[]>([]);
@@ -116,7 +116,7 @@ export default function EditProgramPage({
       setProgramName(programRes.data.name);
       setCategory(programRes.data.category);
       setCertificateTypeId(programRes.data.certificate_type_id);
-      setComplexityLevel(programRes.data.complexity_level || "simple");
+      setOriginalComplexity(programRes.data.complexity_level || "simple");
     }
 
     if (reqRes.data) {
@@ -198,6 +198,14 @@ export default function EditProgramPage({
     setError("");
     setSaved(false);
 
+    // Auto-calculate complexity: keep 'complex' if already set, else hybrid if custom reqs exist
+    let computedComplexity = "simple";
+    if (originalComplexity === "complex") {
+      computedComplexity = "complex";
+    } else if (customReqs.length > 0) {
+      computedComplexity = "hybrid";
+    }
+
     const res = await fetch(`/api/programs/${programId}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -206,7 +214,7 @@ export default function EditProgramPage({
           name: programName,
           category,
           certificate_type_id: certificateTypeId,
-          complexity_level: complexityLevel,
+          complexity_level: computedComplexity,
         },
         requirements: reqs,
         custom_requirements: customReqs,
@@ -263,7 +271,7 @@ export default function EditProgramPage({
             />
           </div>
 
-          <div className="grid gap-4 sm:grid-cols-3">
+          <div className="grid gap-4 sm:grid-cols-2">
             <div>
               <label className="block text-sm font-medium text-slate-300 mb-2">
                 {t("admin.programCategory")}
@@ -294,23 +302,6 @@ export default function EditProgramPage({
                 {certTypes.map((ct) => (
                   <option key={ct.id} value={ct.id}>
                     {ct.name_ar}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-slate-300 mb-2">
-                {t("admin.complexityLevel")}
-              </label>
-              <select
-                value={complexityLevel}
-                onChange={(e) => setComplexityLevel(e.target.value)}
-                className="w-full rounded-lg border border-white/10 bg-white/5 px-4 py-2.5 text-white focus:border-blue-500 focus:outline-none"
-              >
-                {["simple", "hybrid", "complex"].map((level) => (
-                  <option key={level} value={level}>
-                    {t(`universities.${level}` as Parameters<typeof t>[0])}
                   </option>
                 ))}
               </select>

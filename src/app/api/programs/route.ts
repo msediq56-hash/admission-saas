@@ -6,7 +6,7 @@ export async function POST(request: Request) {
   if (error) return error;
 
   const body = await request.json();
-  const { university_id, name, category, certificate_type_id, complexity_level } = body;
+  const { university_id, name, category, certificate_type_id } = body;
 
   if (!university_id || !name || !category) {
     return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
@@ -20,7 +20,7 @@ export async function POST(request: Request) {
       name,
       category,
       certificate_type_id: certificate_type_id || null,
-      complexity_level: complexity_level || "simple",
+      complexity_level: "simple",
       is_active: true,
     })
     .select("id")
@@ -33,6 +33,7 @@ export async function POST(request: Request) {
   // Create empty requirements row
   const { error: reqError } = await supabase.from("requirements").insert({
     program_id: program.id,
+    tenant_id: user.tenant_id,
   });
 
   if (reqError) {
