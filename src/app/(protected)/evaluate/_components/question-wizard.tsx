@@ -74,11 +74,11 @@ export function QuestionWizard({
                 if (e.target.value) onAnswer(e.target.value);
               }}
             >
-              <option value="" disabled>
+              <option value="" disabled className="bg-slate-800 text-white">
                 {t("evaluation.selectOption")}
               </option>
               {currentQ.options.map((opt) => (
-                <option key={opt.value} value={opt.value}>
+                <option key={opt.value} value={opt.value} className="bg-slate-800 text-white">
                   {opt.label}
                 </option>
               ))}
