@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useTranslations } from "next-intl";
 import type { StudentProfile } from "@/lib/comparison-engine";
 import { categoryColors } from "@/lib/ui-constants";
@@ -23,10 +23,14 @@ export function ProfileForm({
   onSubmit,
   loading,
   dynamicFields = [],
+  relevantRuleTypes,
+  onCertificateTypeChange,
 }: {
   onSubmit: (data: ProfileFormResult) => void;
   loading: boolean;
   dynamicFields?: DynamicField[];
+  relevantRuleTypes: Set<string> | null; // null = loading, empty set = no rules found
+  onCertificateTypeChange: (certType: "arabic" | "british") => void;
 }) {
   const t = useTranslations();
 
@@ -73,6 +77,31 @@ export function ProfileForm({
     setSelectedCategories((prev) => ({ ...prev, [cat]: !prev[cat] }));
   }
 
+  function handleCertTypeChange(newType: "arabic" | "british") {
+    setCertificateType(newType);
+    // Reset form values
+    setHasHighSchool(true);
+    setHas12Years(true);
+    setHasIelts(false);
+    setIeltsScore(6.0);
+    setHasSAT(false);
+    setSatScore(1200);
+    setHasGpa(false);
+    setGpa(85);
+    setHasBachelor(false);
+    setHasResearchPlan(false);
+    setALevelCount(1);
+    setALevelCCount(0);
+    setDynamicAnswers({});
+    onCertificateTypeChange(newType);
+  }
+
+  // Trigger initial load on mount
+  useEffect(() => {
+    onCertificateTypeChange("arabic");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   function handleSubmit() {
     const profile: StudentProfile = {
       hasHighSchool,
@@ -118,16 +147,20 @@ export function ProfileForm({
 
   const maxCCount = aLevelCount;
 
+  // Helper: check if a rule type is relevant
+  const has = (type: string) => relevantRuleTypes?.has(type) ?? false;
+  const rulesLoaded = relevantRuleTypes !== null;
+
   return (
     <div className="rounded-xl border border-white/10 bg-white/5 p-6 mb-8">
-      {/* Certificate Type */}
+      {/* Certificate Type — always visible */}
       <div className="mb-6 pb-5 border-b border-white/10">
         <label className="block text-sm font-medium text-slate-300 mb-3">
           {t("comparison.certificateType")}
         </label>
         <div className="flex gap-3">
           <button
-            onClick={() => setCertificateType("arabic")}
+            onClick={() => handleCertTypeChange("arabic")}
             className={`rounded-lg px-5 py-2.5 text-sm font-medium transition ${
               certificateType === "arabic"
                 ? "bg-blue-600/20 text-blue-400 border border-blue-500/30"
@@ -137,7 +170,7 @@ export function ProfileForm({
             {t("comparison.arabicCert")}
           </button>
           <button
-            onClick={() => setCertificateType("british")}
+            onClick={() => handleCertTypeChange("british")}
             className={`rounded-lg px-5 py-2.5 text-sm font-medium transition ${
               certificateType === "british"
                 ? "bg-blue-600/20 text-blue-400 border border-blue-500/30"
@@ -148,8 +181,8 @@ export function ProfileForm({
           </button>
         </div>
 
-        {/* British-specific questions */}
-        {certificateType === "british" && (
+        {/* British A Level fields — show if a_levels rule exists */}
+        {has("a_levels") && (
           <div className="mt-4 space-y-4">
             <div>
               <label className="block text-sm font-medium text-slate-300 mb-2">
@@ -207,177 +240,201 @@ export function ProfileForm({
         )}
       </div>
 
-      <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-        <ToggleField
-          label={t("comparison.hasHS")}
-          value={hasHighSchool}
-          onChange={setHasHighSchool}
-          yesLabel={t("comparison.yes")}
-          noLabel={t("comparison.no")}
-        />
-        <ToggleField
-          label={t("comparison.has12Years")}
-          value={has12Years}
-          onChange={setHas12Years}
-          yesLabel={t("comparison.yes")}
-          noLabel={t("comparison.no")}
-        />
-        <ToggleField
-          label={t("comparison.hasBachelor")}
-          value={hasBachelor}
-          onChange={setHasBachelor}
-          yesLabel={t("comparison.yes")}
-          noLabel={t("comparison.no")}
-        />
+      {/* Loading state */}
+      {!rulesLoaded && (
+        <div className="py-8 text-center text-slate-400 text-sm">
+          {t("common.loading")}
+        </div>
+      )}
 
-        {/* IELTS */}
-        <div>
-          <label className="block text-sm font-medium text-slate-300 mb-2">
-            {t("comparison.ieltsLevel")}
-          </label>
-          <div className="flex gap-2 mb-2">
-            <button
-              onClick={() => setHasIelts(true)}
-              className={`flex-1 rounded-lg px-3 py-2 text-sm font-medium transition ${
-                hasIelts
-                  ? "bg-blue-600/20 text-blue-400 border border-blue-500/30"
-                  : "bg-white/5 text-slate-400 border border-white/10 hover:bg-white/10"
-              }`}
-            >
-              {t("comparison.hasIelts")}
-            </button>
-            <button
-              onClick={() => setHasIelts(false)}
-              className={`flex-1 rounded-lg px-3 py-2 text-sm font-medium transition ${
-                !hasIelts
-                  ? "bg-blue-600/20 text-blue-400 border border-blue-500/30"
-                  : "bg-white/5 text-slate-400 border border-white/10 hover:bg-white/10"
-              }`}
-            >
-              {t("comparison.noIelts")}
-            </button>
-          </div>
-          {hasIelts && (
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-slate-500">
-                {t("comparison.ieltsScore")}:
-              </span>
-              <input
-                type="number"
-                min={0}
-                max={9}
-                step={0.5}
-                value={ieltsScore}
-                onChange={(e) =>
-                  setIeltsScore(parseFloat(e.target.value) || 0)
-                }
-                className="w-20 rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-sm text-white"
-              />
+      {/* Dynamic fields based on relevant rule types */}
+      {rulesLoaded && (
+        <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+          {has("high_school") && (
+            <ToggleField
+              label={t("comparison.hasHS")}
+              value={hasHighSchool}
+              onChange={setHasHighSchool}
+              yesLabel={t("comparison.yes")}
+              noLabel={t("comparison.no")}
+            />
+          )}
+          {has("twelve_years") && (
+            <ToggleField
+              label={t("comparison.has12Years")}
+              value={has12Years}
+              onChange={setHas12Years}
+              yesLabel={t("comparison.yes")}
+              noLabel={t("comparison.no")}
+            />
+          )}
+          {has("bachelor") && (
+            <ToggleField
+              label={t("comparison.hasBachelor")}
+              value={hasBachelor}
+              onChange={setHasBachelor}
+              yesLabel={t("comparison.yes")}
+              noLabel={t("comparison.no")}
+            />
+          )}
+
+          {/* Language cert / IELTS */}
+          {has("language_cert") && (
+            <div>
+              <label className="block text-sm font-medium text-slate-300 mb-2">
+                {t("comparison.ieltsLevel")}
+              </label>
+              <div className="flex gap-2 mb-2">
+                <button
+                  onClick={() => setHasIelts(true)}
+                  className={`flex-1 rounded-lg px-3 py-2 text-sm font-medium transition ${
+                    hasIelts
+                      ? "bg-blue-600/20 text-blue-400 border border-blue-500/30"
+                      : "bg-white/5 text-slate-400 border border-white/10 hover:bg-white/10"
+                  }`}
+                >
+                  {t("comparison.hasIelts")}
+                </button>
+                <button
+                  onClick={() => setHasIelts(false)}
+                  className={`flex-1 rounded-lg px-3 py-2 text-sm font-medium transition ${
+                    !hasIelts
+                      ? "bg-blue-600/20 text-blue-400 border border-blue-500/30"
+                      : "bg-white/5 text-slate-400 border border-white/10 hover:bg-white/10"
+                  }`}
+                >
+                  {t("comparison.noIelts")}
+                </button>
+              </div>
+              {hasIelts && (
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-slate-500">
+                    {t("comparison.ieltsScore")}:
+                  </span>
+                  <input
+                    type="number"
+                    min={0}
+                    max={9}
+                    step={0.5}
+                    value={ieltsScore}
+                    onChange={(e) =>
+                      setIeltsScore(parseFloat(e.target.value) || 0)
+                    }
+                    className="w-20 rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-sm text-white"
+                  />
+                </div>
+              )}
             </div>
           )}
-        </div>
 
-        {/* SAT */}
-        <div>
-          <label className="block text-sm font-medium text-slate-300 mb-2">
-            {t("comparison.hasSAT")}
-          </label>
-          <div className="flex gap-2 mb-2">
-            <button
-              onClick={() => setHasSAT(true)}
-              className={`flex-1 rounded-lg px-3 py-2 text-sm font-medium transition ${
-                hasSAT
-                  ? "bg-blue-600/20 text-blue-400 border border-blue-500/30"
-                  : "bg-white/5 text-slate-400 border border-white/10 hover:bg-white/10"
-              }`}
-            >
-              {t("comparison.yes")}
-            </button>
-            <button
-              onClick={() => setHasSAT(false)}
-              className={`flex-1 rounded-lg px-3 py-2 text-sm font-medium transition ${
-                !hasSAT
-                  ? "bg-blue-600/20 text-blue-400 border border-blue-500/30"
-                  : "bg-white/5 text-slate-400 border border-white/10 hover:bg-white/10"
-              }`}
-            >
-              {t("comparison.no")}
-            </button>
-          </div>
-          {hasSAT && (
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-slate-500">
-                {t("comparison.satScore")}:
-              </span>
-              <input
-                type="number"
-                min={400}
-                max={1600}
-                step={10}
-                value={satScore}
-                onChange={(e) => setSatScore(parseInt(e.target.value) || 400)}
-                className="w-24 rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-sm text-white"
-              />
+          {/* SAT */}
+          {has("sat") && (
+            <div>
+              <label className="block text-sm font-medium text-slate-300 mb-2">
+                {t("comparison.hasSAT")}
+              </label>
+              <div className="flex gap-2 mb-2">
+                <button
+                  onClick={() => setHasSAT(true)}
+                  className={`flex-1 rounded-lg px-3 py-2 text-sm font-medium transition ${
+                    hasSAT
+                      ? "bg-blue-600/20 text-blue-400 border border-blue-500/30"
+                      : "bg-white/5 text-slate-400 border border-white/10 hover:bg-white/10"
+                  }`}
+                >
+                  {t("comparison.yes")}
+                </button>
+                <button
+                  onClick={() => setHasSAT(false)}
+                  className={`flex-1 rounded-lg px-3 py-2 text-sm font-medium transition ${
+                    !hasSAT
+                      ? "bg-blue-600/20 text-blue-400 border border-blue-500/30"
+                      : "bg-white/5 text-slate-400 border border-white/10 hover:bg-white/10"
+                  }`}
+                >
+                  {t("comparison.no")}
+                </button>
+              </div>
+              {hasSAT && (
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-slate-500">
+                    {t("comparison.satScore")}:
+                  </span>
+                  <input
+                    type="number"
+                    min={400}
+                    max={1600}
+                    step={10}
+                    value={satScore}
+                    onChange={(e) => setSatScore(parseInt(e.target.value) || 400)}
+                    className="w-24 rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-sm text-white"
+                  />
+                </div>
+              )}
             </div>
           )}
-        </div>
 
-        {/* GPA */}
-        <div>
-          <label className="block text-sm font-medium text-slate-300 mb-2">
-            {t("comparison.gpa")}
-          </label>
-          <div className="flex gap-2 mb-2">
-            <button
-              onClick={() => setHasGpa(true)}
-              className={`flex-1 rounded-lg px-3 py-2 text-sm font-medium transition ${
-                hasGpa
-                  ? "bg-blue-600/20 text-blue-400 border border-blue-500/30"
-                  : "bg-white/5 text-slate-400 border border-white/10 hover:bg-white/10"
-              }`}
-            >
-              {t("comparison.gpaSpecified")}
-            </button>
-            <button
-              onClick={() => setHasGpa(false)}
-              className={`flex-1 rounded-lg px-3 py-2 text-sm font-medium transition ${
-                !hasGpa
-                  ? "bg-blue-600/20 text-blue-400 border border-blue-500/30"
-                  : "bg-white/5 text-slate-400 border border-white/10 hover:bg-white/10"
-              }`}
-            >
-              {t("comparison.gpaNotSpecified")}
-            </button>
-          </div>
-          {hasGpa && (
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-slate-500">
-                {t("comparison.gpaPercent")}:
-              </span>
-              <input
-                type="number"
-                min={0}
-                max={100}
-                value={gpa}
-                onChange={(e) => setGpa(parseInt(e.target.value) || 0)}
-                className="w-20 rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-sm text-white"
-              />
-              <span className="text-xs text-slate-500">%</span>
+          {/* GPA */}
+          {has("gpa") && (
+            <div>
+              <label className="block text-sm font-medium text-slate-300 mb-2">
+                {t("comparison.gpa")}
+              </label>
+              <div className="flex gap-2 mb-2">
+                <button
+                  onClick={() => setHasGpa(true)}
+                  className={`flex-1 rounded-lg px-3 py-2 text-sm font-medium transition ${
+                    hasGpa
+                      ? "bg-blue-600/20 text-blue-400 border border-blue-500/30"
+                      : "bg-white/5 text-slate-400 border border-white/10 hover:bg-white/10"
+                  }`}
+                >
+                  {t("comparison.gpaSpecified")}
+                </button>
+                <button
+                  onClick={() => setHasGpa(false)}
+                  className={`flex-1 rounded-lg px-3 py-2 text-sm font-medium transition ${
+                    !hasGpa
+                      ? "bg-blue-600/20 text-blue-400 border border-blue-500/30"
+                      : "bg-white/5 text-slate-400 border border-white/10 hover:bg-white/10"
+                  }`}
+                >
+                  {t("comparison.gpaNotSpecified")}
+                </button>
+              </div>
+              {hasGpa && (
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-slate-500">
+                    {t("comparison.gpaPercent")}:
+                  </span>
+                  <input
+                    type="number"
+                    min={0}
+                    max={100}
+                    value={gpa}
+                    onChange={(e) => setGpa(parseInt(e.target.value) || 0)}
+                    className="w-20 rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-sm text-white"
+                  />
+                  <span className="text-xs text-slate-500">%</span>
+                </div>
+              )}
             </div>
           )}
-        </div>
 
-        <ToggleField
-          label={t("comparison.hasResearchPlan")}
-          value={hasResearchPlan}
-          onChange={setHasResearchPlan}
-          yesLabel={t("comparison.yes")}
-          noLabel={t("comparison.no")}
-        />
-      </div>
+          {has("research_plan") && (
+            <ToggleField
+              label={t("comparison.hasResearchPlan")}
+              value={hasResearchPlan}
+              onChange={setHasResearchPlan}
+              yesLabel={t("comparison.yes")}
+              noLabel={t("comparison.no")}
+            />
+          )}
+        </div>
+      )}
 
       {/* Dynamic Fields */}
-      {dynamicFields.length > 0 && (
+      {rulesLoaded && dynamicFields.length > 0 && (
         <div className="mt-6 border-t border-white/10 pt-5">
           <label className="block text-sm font-medium text-slate-300 mb-3">
             {t("admin.dynamicRequirements")}
@@ -454,7 +511,7 @@ export function ProfileForm({
         </div>
       )}
 
-      {/* Category Filter */}
+      {/* Category Filter — always visible */}
       <div className="mt-6 border-t border-white/10 pt-5">
         <label className="block text-sm font-medium text-slate-300 mb-3">
           {t("comparison.programTypes")}
@@ -476,10 +533,10 @@ export function ProfileForm({
         </div>
       </div>
 
-      {/* Evaluate Button */}
+      {/* Evaluate Button — always visible */}
       <button
         onClick={handleSubmit}
-        disabled={loading}
+        disabled={loading || !rulesLoaded}
         className="mt-6 w-full rounded-xl bg-blue-600 px-6 py-3.5 text-base font-bold text-white transition hover:bg-blue-500 disabled:opacity-50"
       >
         {loading ? t("common.loading") : t("comparison.evaluateAll")}

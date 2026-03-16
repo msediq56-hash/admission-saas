@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useCallback } from "react";
 import { useTranslations } from "next-intl";
 import { createSupabaseBrowserClient } from "@/lib/supabase-browser";
 import { useAuth } from "@/lib/auth-context";
@@ -30,38 +30,73 @@ export default function ComparePage() {
   const [results, setResults] = useState<ComparisonResult[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [dynamicFields, setDynamicFields] = useState<DynamicField[]>([]);
+  const [relevantRuleTypes, setRelevantRuleTypes] = useState<Set<string> | null>(null);
 
-  // Load dynamic fields on mount
-  useEffect(() => {
-    async function loadDynamicFields() {
-      const { data } = await supabase
-        .from("custom_requirements")
-        .select("comparison_key, question_text, comparison_input_type, options")
-        .eq("show_in_comparison", true);
+  // Load relevant rule types and dynamic fields when cert type changes
+  const handleCertificateTypeChange = useCallback(async (certType: "arabic" | "british") => {
+    setRelevantRuleTypes(null); // show loading
+    setResults(null); // clear previous results
 
-      if (!data || data.length === 0) {
-        setDynamicFields([]);
-        return;
-      }
+    // Find the certificate_type_id for this slug
+    const { data: certTypeRow } = await supabase
+      .from("certificate_types")
+      .select("id")
+      .eq("slug", certType)
+      .single();
 
-      // Deduplicate by comparison_key
-      const seen = new Set<string>();
-      const fields: DynamicField[] = [];
-      for (const row of data) {
-        if (!row.comparison_key || seen.has(row.comparison_key)) continue;
-        seen.add(row.comparison_key);
-        fields.push({
-          comparison_key: row.comparison_key,
-          question_text: row.question_text,
-          comparison_input_type: row.comparison_input_type as DynamicField["comparison_input_type"],
-          options: row.options as string[] | null,
-        });
-      }
-      setDynamicFields(fields);
+    const certTypeId = certTypeRow?.id || null;
+
+    // Load all enabled rules for active programs that match this cert type (or universal)
+    let rulesQuery = supabase
+      .from("requirement_rules")
+      .select("rule_type, certificate_type_id")
+      .eq("is_enabled", true)
+      .eq("tenant_id", user.tenantId);
+
+    if (certTypeId) {
+      // Match cert-specific OR universal (null)
+      rulesQuery = rulesQuery.or(`certificate_type_id.eq.${certTypeId},certificate_type_id.is.null`);
     }
-    loadDynamicFields();
+
+    const { data: rules } = await rulesQuery;
+
+    // Extract distinct rule types
+    const types = new Set<string>();
+    if (rules) {
+      for (const r of rules) {
+        types.add(r.rule_type);
+      }
+    }
+    setRelevantRuleTypes(types);
+
+    // Load dynamic fields (custom_requirements with show_in_comparison)
+    const { data: customData } = await supabase
+      .from("custom_requirements")
+      .select("comparison_key, question_text, comparison_input_type, options, certificate_type_id")
+      .eq("show_in_comparison", true);
+
+    if (!customData || customData.length === 0) {
+      setDynamicFields([]);
+      return;
+    }
+
+    // Filter to matching cert type or universal, then deduplicate by comparison_key
+    const seen = new Set<string>();
+    const fields: DynamicField[] = [];
+    for (const row of customData) {
+      if (row.certificate_type_id !== null && row.certificate_type_id !== certTypeId) continue;
+      if (!row.comparison_key || seen.has(row.comparison_key)) continue;
+      seen.add(row.comparison_key);
+      fields.push({
+        comparison_key: row.comparison_key,
+        question_text: row.question_text,
+        comparison_input_type: row.comparison_input_type as DynamicField["comparison_input_type"],
+        options: row.options as string[] | null,
+      });
+    }
+    setDynamicFields(fields);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [user.tenantId]);
 
   async function handleEvaluate({ profile, selectedCategories }: ProfileFormResult) {
     setLoading(true);
@@ -280,6 +315,8 @@ export default function ComparePage() {
         onSubmit={handleEvaluate}
         loading={loading}
         dynamicFields={dynamicFields}
+        relevantRuleTypes={relevantRuleTypes}
+        onCertificateTypeChange={handleCertificateTypeChange}
       />
 
       {results !== null && <ResultsList results={results} />}
