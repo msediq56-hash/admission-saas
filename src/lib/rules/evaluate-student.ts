@@ -260,23 +260,28 @@ export function buildQuestionsFromRules(
         break;
 
       case "a_levels": {
-        const minSubjects = (cfg.subjects_min as number) || 3;
-        questions.push({
-          id: `rule_${rule.id}_count`,
-          text: `هل لدى الطالب ${minSubjects} مواد A Level؟`,
-          type: "yes_no",
-          isBlocking: true,
-          sourceField: "rule_a_levels_count",
-        });
+        const minSubjects = cfg.subjects_min as number | undefined;
+        // Count check — only if subjects_min is specified
+        if (minSubjects) {
+          questions.push({
+            id: `rule_${rule.id}_count`,
+            text: `هل لدى الطالب ${minSubjects} مواد A Level؟`,
+            type: "yes_no",
+            isBlocking: rule.effect === "blocks_admission",
+            sourceField: "rule_a_levels_count",
+          });
+        }
+        // Grade check — only if min_grade is specified
         if (cfg.min_grade) {
           questions.push({
             id: `rule_${rule.id}_grade`,
-            text: `هل جميع المواد الثلاثة بدرجة ${cfg.min_grade} أو أعلى؟`,
+            text: `هل جميع المواد بدرجة ${cfg.min_grade} أو أعلى؟`,
             type: "yes_no",
             isBlocking: rule.effect === "blocks_admission",
             sourceField: "rule_a_levels_grade",
           });
         }
+        // Core check — only if requires_core is specified
         if (cfg.requires_core) {
           questions.push({
             id: `rule_${rule.id}_core`,

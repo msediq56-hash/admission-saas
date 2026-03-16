@@ -112,24 +112,41 @@ export function evaluateProfileWithRules(
       // --- A Levels (process before high school for British) ---
       case "a_levels": {
         if (profile.certificateType !== "british") break;
-        const needed = (cfg.subjects_min as number) || 3;
         const aCount = profile.aLevelCount ?? 0;
         const aCCount = profile.aLevelCCount ?? 0;
 
-        if (aCount < needed) {
-          return makeNegative(
-            entry,
-            rule.effect_message ||
-              `غير مؤهل — يحتاج ${needed} مواد A Level`
-          );
-        }
-        // Grade check: skip for foundation
-        if (cfg.min_grade && !isFoundation) {
-          if (aCCount < needed) {
+        // Count check — only if subjects_min is specified
+        const needed = cfg.subjects_min as number | undefined;
+        if (needed && aCount < needed) {
+          if (rule.effect === "blocks_admission") {
+            return makeNegative(
+              entry,
+              rule.effect_message ||
+                `غير مؤهل — يحتاج ${needed} مواد A Level`
+            );
+          } else {
             negatives.push(
               rule.effect_message ||
-                "درجات أقل من C — جرّب السنة التأسيسية"
+                `يحتاج ${needed} مواد A Level`
             );
+          }
+        }
+        // Grade check — only if min_grade is specified, skip for foundation
+        if (cfg.min_grade && !isFoundation) {
+          const requiredGradeCount = needed || (aCount || 3);
+          if (aCCount < requiredGradeCount) {
+            if (rule.effect === "blocks_admission") {
+              return makeNegative(
+                entry,
+                rule.effect_message ||
+                  `درجات أقل من ${cfg.min_grade}`
+              );
+            } else {
+              negatives.push(
+                rule.effect_message ||
+                  `درجات أقل من ${cfg.min_grade} — جرّب السنة التأسيسية`
+              );
+            }
           }
         }
         break;

@@ -33,27 +33,18 @@ export const aLevelsEvaluator: RuleEvaluator<ALevelsConfig> = {
     rule: RequirementRule
   ): RuleEvaluationResult {
     const subjectsMin = config.subjects_min ?? 0;
-    const questionText = `هل لدى الطالب ${subjectsMin} مواد A Level؟`;
+    const hasCountCheck = subjectsMin > 0;
+    const hasGradeCheck = !!config.min_grade;
+    const questionText = hasCountCheck
+      ? `هل لدى الطالب ${subjectsMin} مواد A Level؟`
+      : hasGradeCheck
+        ? `هل جميع المواد بدرجة ${config.min_grade} أو أعلى؟`
+        : "A Level check";
 
-    // Check count
-    const count = input.aLevelCount ?? 0;
-    if (subjectsMin > 0 && count < subjectsMin) {
-      return {
-        ruleId: rule.id,
-        ruleType: "a_levels",
-        passed: false,
-        effect: rule.effect,
-        message:
-          rule.effect_message ||
-          `يحتاج ${subjectsMin} مواد A Level (لديه ${count})`,
-        questionText,
-      };
-    }
-
-    // Check grade if required
-    if (config.min_grade) {
-      const gradeCount = input.aLevelCCount ?? 0;
-      if (gradeCount < subjectsMin) {
+    // Check count (only if subjects_min is specified)
+    if (hasCountCheck) {
+      const count = input.aLevelCount ?? 0;
+      if (count < subjectsMin) {
         return {
           ruleId: rule.id,
           ruleType: "a_levels",
@@ -61,7 +52,25 @@ export const aLevelsEvaluator: RuleEvaluator<ALevelsConfig> = {
           effect: rule.effect,
           message:
             rule.effect_message ||
-            `يحتاج ${subjectsMin} مواد A Level بدرجة ${config.min_grade} أو أعلى`,
+            `يحتاج ${subjectsMin} مواد A Level (لديه ${count})`,
+          questionText,
+        };
+      }
+    }
+
+    // Check grade if required (compare against count or 3 as fallback)
+    if (hasGradeCheck) {
+      const gradeCount = input.aLevelCCount ?? 0;
+      const requiredGradeCount = subjectsMin || (input.aLevelCount ?? 3);
+      if (gradeCount < requiredGradeCount) {
+        return {
+          ruleId: rule.id,
+          ruleType: "a_levels",
+          passed: false,
+          effect: rule.effect,
+          message:
+            rule.effect_message ||
+            `يحتاج مواد A Level بدرجة ${config.min_grade} أو أعلى`,
           questionText,
         };
       }
@@ -69,7 +78,6 @@ export const aLevelsEvaluator: RuleEvaluator<ALevelsConfig> = {
 
     // Check core subjects if required
     if (config.requires_core) {
-      // Core check is based on dynamicAnswers or assumed passed if aLevelCCount sufficient
       const hasCoreAnswer = input.dynamicAnswers?.["requires_a_levels_core"];
       if (hasCoreAnswer === "no" || hasCoreAnswer === false) {
         return {

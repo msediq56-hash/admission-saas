@@ -167,14 +167,27 @@ async function main() {
     },
 
     // === BACHELOR — British ===
+    // Rule 1: A Level count check (blocks)
     {
       program_id: bachelorId,
       certificate_type_id: britishCertId,
       rule_type: "a_levels",
-      config: { subjects_min: 3, min_grade: "C", requires_core: true },
+      config: { subjects_min: 3 },
       effect: "blocks_admission",
-      effect_message: "يحتاج 3 مواد A Level بدرجة C أو أعلى مع مادتين أساسيتين",
+      effect_message: "يحتاج 3 مواد A Level على الأقل",
       sort_order: 1,
+      is_enabled: true,
+      tenant_id: tenantId,
+    },
+    // Rule 2: A Level grade check (conditional, suggests foundation)
+    {
+      program_id: bachelorId,
+      certificate_type_id: britishCertId,
+      rule_type: "a_levels",
+      config: { min_grade: "C", requires_core: true },
+      effect: "makes_conditional",
+      effect_message: "درجات أقل من C — جرّب مسار السنة التأسيسية (IFY)",
+      sort_order: 2,
       is_enabled: true,
       tenant_id: tenantId,
     },
@@ -185,7 +198,7 @@ async function main() {
       config: { min_score: 1200 },
       effect: "makes_conditional",
       effect_message: "يحتاج تقديم SAT بدرجة 1200+ قبل 31 ديسمبر",
-      sort_order: 2,
+      sort_order: 3,
       is_enabled: true,
       tenant_id: tenantId,
     },
@@ -196,7 +209,7 @@ async function main() {
       config: { cert_type: "ielts", min_score: 6.5, alternatives: { Duolingo: 110 } },
       effect: "makes_conditional",
       effect_message: "سيتم ترتيب مقابلة لتقييم اللغة",
-      sort_order: 3,
+      sort_order: 4,
       is_enabled: true,
       tenant_id: tenantId,
     },
