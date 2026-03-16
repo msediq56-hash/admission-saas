@@ -349,57 +349,85 @@ export default function EditProgramPage({
 
     if (isUniversal && tabs.length === 1 && tabs[0].certTypeId === null) {
       // Converting from universal → first cert-specific tab
-      // Copy existing universal rules into the new cert tab
       const universalTab = tabs[0];
 
-      // Save universal rules to the new cert type via API
-      setSaving(true);
-      await fetch(`/api/rules/${programId}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          certificate_type_id: certTypeId,
-          rules: universalTab.rules,
-          req_row_id: universalTab.reqRowId,
-        }),
-      });
-
-      // Delete old universal rules
-      await fetch(`/api/rules/${programId}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          certificate_type_id: null,
+      if (universalTab.rules.length === 0) {
+        // No rules to convert — just create an empty cert-specific tab locally
+        const newTab: RuleTab = {
+          certTypeId: ct.id,
+          certTypeName: ct.name_ar,
+          reqRowId: null,
           rules: [],
-          req_row_id: null,
-        }),
-      });
-
-      // Also convert the old requirements row cert type
-      if (universalTab.reqRowId) {
-        await fetch(`/api/programs/${programId}`, {
-          method: "PATCH",
+        };
+        setTabs([newTab]);
+        setActiveTabIndex(0);
+        setIsUniversal(false);
+        setShowCertTypePicker(false);
+        setToast(`تم إضافة تبويب ${ct.name_ar}`);
+        setTimeout(() => setToast(""), 3000);
+      } else {
+        // Has rules — save them under the new cert type via API
+        setSaving(true);
+        await fetch(`/api/rules/${programId}`, {
+          method: "PUT",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            convert_cert_type: {
-              req_row_id: universalTab.reqRowId,
-              from_cert_type_id: null,
-              to_cert_type_id: certTypeId,
-            },
+            certificate_type_id: certTypeId,
+            rules: universalTab.rules,
+            req_row_id: universalTab.reqRowId,
           }),
         });
-      }
 
-      setSaving(false);
-      setShowCertTypePicker(false);
-      setToast(`تم نسخ الشروط العامة إلى تبويب ${ct.name_ar}`);
-      setTimeout(() => setToast(""), 3000);
-      await loadData();
-      setTabs((prev) => {
-        const idx = prev.findIndex((tab) => tab.certTypeId === certTypeId);
-        if (idx >= 0) setActiveTabIndex(idx);
-        return prev;
-      });
+        // Delete old universal rules
+        await fetch(`/api/rules/${programId}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            certificate_type_id: null,
+            rules: [],
+            req_row_id: null,
+          }),
+        });
+
+        // Also convert the old requirements row cert type
+        if (universalTab.reqRowId) {
+          await fetch(`/api/programs/${programId}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              convert_cert_type: {
+                req_row_id: universalTab.reqRowId,
+                from_cert_type_id: null,
+                to_cert_type_id: certTypeId,
+              },
+            }),
+          });
+        }
+
+        setSaving(false);
+        setShowCertTypePicker(false);
+        setToast(`تم نسخ الشروط العامة إلى تبويب ${ct.name_ar}`);
+        setTimeout(() => setToast(""), 3000);
+        await loadData();
+        // After reload, if tabs were created from DB use them; otherwise fall back
+        setTabs((prev) => {
+          const idx = prev.findIndex((tab) => tab.certTypeId === certTypeId);
+          if (idx >= 0) {
+            setActiveTabIndex(idx);
+            return prev;
+          }
+          // Fallback: loadData found nothing — create the tab locally
+          const fallbackTab: RuleTab = {
+            certTypeId: ct.id,
+            certTypeName: ct.name_ar,
+            reqRowId: null,
+            rules: universalTab.rules,
+          };
+          setIsUniversal(false);
+          setActiveTabIndex(0);
+          return [fallbackTab];
+        });
+      }
     } else {
       // Already in multi-cert mode — add new empty tab
       const newTab: RuleTab = {
