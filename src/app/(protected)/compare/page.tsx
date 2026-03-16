@@ -5,16 +5,18 @@ import { useTranslations } from "next-intl";
 import { createSupabaseBrowserClient } from "@/lib/supabase-browser";
 import { useAuth } from "@/lib/auth-context";
 import {
-  compareAllPrograms,
   isMedicalProgram,
   type ComparisonResult,
-  type ProgramEntry,
 } from "@/lib/comparison-engine";
 import type {
-  Requirement,
   CustomRequirement,
   ScholarshipTier,
 } from "@/lib/evaluation-engine";
+import type { RequirementRule } from "@/lib/rules/types";
+import {
+  compareAllProgramsWithRules,
+  type RuleProgramEntry,
+} from "@/lib/rules/compare-student";
 import { ProfileForm, type ProfileFormResult, type DynamicField } from "./_components/profile-form";
 import { ResultsList } from "./_components/results-list";
 
@@ -79,7 +81,7 @@ export default function ComparePage() {
 
     const uniMap = new Map(universities.map((u) => [u.id, u]));
 
-    // Fetch ALL programs (no certificate_types join needed on programs anymore)
+    // Fetch ALL active programs
     const { data: programs } = await supabase
       .from("programs")
       .select("id, name, category, university_id")
@@ -97,12 +99,14 @@ export default function ComparePage() {
 
     const programIds = programs.map((p) => p.id);
 
-    // Fetch requirements with certificate_types join to get slug
-    const [reqRes, customRes, tierRes] = await Promise.all([
+    // Fetch rules, custom_requirements (for comparison fields), and scholarship tiers
+    const [rulesRes, customRes, tierRes] = await Promise.all([
       supabase
-        .from("requirements")
+        .from("requirement_rules")
         .select("*, certificate_types(slug)")
-        .in("program_id", programIds),
+        .in("program_id", programIds)
+        .eq("is_enabled", true)
+        .order("sort_order"),
       supabase
         .from("custom_requirements")
         .select("*, certificate_types(slug)")
@@ -115,11 +119,8 @@ export default function ComparePage() {
         .order("sort_order"),
     ]);
 
-    // Group requirements by (program_id, certificate_type_id)
-    // Key format: "programId|certTypeId" or "programId|null"
-    type ReqRow = Requirement & {
-      program_id: string;
-      certificate_type_id: string | null;
+    // Group rules by (program_id, certificate_type_id)
+    type RuleRow = RequirementRule & {
       certificate_types: { slug: string } | null;
     };
     type CustomRow = CustomRequirement & {
@@ -132,12 +133,12 @@ export default function ComparePage() {
       certificate_type_id: string | null;
     };
 
-    const reqsByKey = new Map<string, ReqRow[]>();
-    for (const r of (reqRes.data || []) as ReqRow[]) {
+    const rulesByKey = new Map<string, RuleRow[]>();
+    for (const r of (rulesRes.data || []) as RuleRow[]) {
       const key = `${r.program_id}|${r.certificate_type_id || "null"}`;
-      const arr = reqsByKey.get(key) || [];
+      const arr = rulesByKey.get(key) || [];
       arr.push(r);
-      reqsByKey.set(key, arr);
+      rulesByKey.set(key, arr);
     }
 
     const customsByProgramCert = new Map<string, CustomRow[]>();
@@ -156,19 +157,19 @@ export default function ComparePage() {
       tiersByProgramCert.set(key, arr);
     }
 
-    // Build ProgramEntry objects — one per (program, certType) combination
-    const entries: ProgramEntry[] = [];
+    // Build RuleProgramEntry objects — one per (program, certType) combination
+    const entries: RuleProgramEntry[] = [];
 
     for (const p of programs) {
       const uni = uniMap.get(p.university_id)!;
 
-      // Find all distinct cert type keys for this program's requirements
-      const programReqKeys = [...reqsByKey.keys()].filter((k) =>
+      // Find all distinct cert type keys for this program's rules
+      const programRuleKeys = [...rulesByKey.keys()].filter((k) =>
         k.startsWith(`${p.id}|`)
       );
 
-      if (programReqKeys.length === 0) {
-        // No requirements at all — include as universal
+      if (programRuleKeys.length === 0) {
+        // No rules at all — include as universal with empty rules
         entries.push({
           programId: p.id,
           programName: p.name,
@@ -177,51 +178,31 @@ export default function ComparePage() {
           universityType: uni.type,
           category: p.category,
           certificateTypeSlug: null,
-          requirements: {} as Requirement,
+          rules: [],
           customRequirements: [],
           scholarshipTiers: [],
         });
         continue;
       }
 
-      // Check if there are cert-specific requirement rows
-      const certSpecificKeys = programReqKeys.filter(
+      // Check if there are cert-specific rule rows
+      const certSpecificKeys = programRuleKeys.filter(
         (k) => !k.endsWith("|null")
       );
       const universalKey = `${p.id}|null`;
-      const hasUniversalReqs = reqsByKey.has(universalKey);
+      const hasUniversalRules = rulesByKey.has(universalKey);
 
       if (certSpecificKeys.length > 0) {
-        // Program has cert-specific requirements — create one entry per cert type
+        // Program has cert-specific rules — create one entry per cert type
         for (const key of certSpecificKeys) {
-          const reqs = reqsByKey.get(key) || [];
+          const certRules = rulesByKey.get(key) || [];
           const certSlug =
-            (reqs[0]?.certificate_types as { slug: string } | null)?.slug ||
-            null;
+            (certRules[0]?.certificate_types as { slug: string } | null)
+              ?.slug || null;
 
-          // Merge with universal requirements if they exist
-          const universalReqs = reqsByKey.get(universalKey) || [];
-          const mergedReq: Requirement = {} as Requirement;
-
-          // Apply universal first, then cert-specific (cert-specific takes precedence)
-          for (const row of [...universalReqs, ...reqs]) {
-            for (const [k, v] of Object.entries(row)) {
-              if (
-                k !== "program_id" &&
-                k !== "certificate_type_id" &&
-                k !== "certificate_types" &&
-                k !== "id" &&
-                k !== "tenant_id" &&
-                k !== "created_at" &&
-                k !== "updated_at" &&
-                v !== null &&
-                v !== undefined &&
-                v !== false
-              ) {
-                (mergedReq as Record<string, unknown>)[k] = v;
-              }
-            }
-          }
+          // Merge with universal rules
+          const universalRules = rulesByKey.get(universalKey) || [];
+          const allRules = [...universalRules, ...certRules];
 
           // Get customs: cert-specific + universal
           const certCustoms = customsByProgramCert.get(key) || [];
@@ -243,15 +224,14 @@ export default function ComparePage() {
             universityType: uni.type,
             category: p.category,
             certificateTypeSlug: certSlug,
-            requirements: mergedReq,
+            rules: allRules,
             customRequirements: allCustoms,
             scholarshipTiers: allTiers,
           });
         }
-      } else if (hasUniversalReqs) {
-        // Only universal requirements
-        const reqs = reqsByKey.get(universalKey) || [];
-        const req = reqs[0] || ({} as Requirement);
+      } else if (hasUniversalRules) {
+        // Only universal rules
+        const rules = rulesByKey.get(universalKey) || [];
         const customs = customsByProgramCert.get(universalKey) || [];
         const tiers = tiersByProgramCert.get(universalKey) || [];
 
@@ -263,7 +243,7 @@ export default function ComparePage() {
           universityType: uni.type,
           category: p.category,
           certificateTypeSlug: null,
-          requirements: req,
+          rules,
           customRequirements: customs,
           scholarshipTiers: tiers,
         });
@@ -271,7 +251,7 @@ export default function ComparePage() {
     }
 
     // Evaluate ALL programs first (so cross-program suggestions work)
-    const allResults = compareAllPrograms(profile, entries);
+    const allResults = compareAllProgramsWithRules(profile, entries);
 
     // Filter results AFTER comparison based on selected categories
     const filtered = allResults.filter((r) => {

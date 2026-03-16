@@ -5,18 +5,21 @@ import { useTranslations } from "next-intl";
 import { createSupabaseBrowserClient } from "@/lib/supabase-browser";
 import { useAuth } from "@/lib/auth-context";
 import {
-  buildQuestionsFromRequirements,
   buildMajorSubjectQuestions,
-  evaluateAnswers,
   type EvaluationQuestion,
   type EvaluationAnswer,
   type EvaluationResult,
-  type Requirement,
-  type CustomRequirement,
   type ScholarshipTier,
   type Major,
   type MajorSubjectRequirement,
 } from "@/lib/evaluation-engine";
+import type { RequirementRule } from "@/lib/rules/types";
+import {
+  loadProgramRules,
+  loadCertTypesFromRules,
+  buildQuestionsFromRules,
+  evaluateRuleAnswers,
+} from "@/lib/rules/evaluate-student";
 import {
   CountryStep,
   TypeStep,
@@ -77,11 +80,8 @@ export default function EvaluatePage() {
   const [questions, setQuestions] = useState<EvaluationQuestion[]>([]);
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [answers, setAnswers] = useState<EvaluationAnswer[]>([]);
-  const [requirementData, setRequirementData] = useState<{
-    req: Requirement;
-    customReqs: CustomRequirement[];
-    scholarshipTiers: ScholarshipTier[];
-  } | null>(null);
+  const [programRules, setProgramRules] = useState<RequirementRule[]>([]);
+  const [scholarshipTiers, setScholarshipTiers] = useState<ScholarshipTier[]>([]);
   const [blockedAtQuestionIndex, setBlockedAtQuestionIndex] = useState<
     number | null
   >(null);
@@ -136,26 +136,11 @@ export default function EvaluatePage() {
     [supabase]
   );
 
-  // Fetch available cert types for a program from its requirements
+  // Fetch available cert types for a program from requirement_rules
   const fetchCertTypesForProgram = useCallback(
     async (programId: string) => {
       setLoading(true);
-      const { data: progReqs } = await supabase
-        .from("requirements")
-        .select("certificate_type_id, certificate_types(id, slug, name_ar)")
-        .eq("program_id", programId);
-
-      const certTypes: CertificateTypeOption[] = [];
-      const seen = new Set<string>();
-      for (const r of progReqs || []) {
-        if (r.certificate_type_id && r.certificate_types) {
-          const ct = r.certificate_types as unknown as CertificateTypeOption;
-          if (!seen.has(ct.id)) {
-            seen.add(ct.id);
-            certTypes.push(ct);
-          }
-        }
-      }
+      const certTypes = await loadCertTypesFromRules(supabase, programId);
       setAvailableCertTypes(certTypes);
       setLoading(false);
       return certTypes;
@@ -167,17 +152,7 @@ export default function EvaluatePage() {
     async (programId: string, certTypeId: string | null) => {
       setLoading(true);
 
-      // Build filter for cert-type-scoped data
-      // Load requirements matching: cert_type = selected OR cert_type IS NULL
-      let reqQuery = supabase
-        .from("requirements")
-        .select("*")
-        .eq("program_id", programId);
-      let customQuery = supabase
-        .from("custom_requirements")
-        .select("*")
-        .eq("program_id", programId)
-        .order("sort_order");
+      // Load rules from requirement_rules + scholarship tiers + majors in parallel
       let tierQuery = supabase
         .from("scholarship_tiers")
         .select("*")
@@ -185,20 +160,13 @@ export default function EvaluatePage() {
         .order("sort_order");
 
       if (certTypeId) {
-        reqQuery = reqQuery.or(
-          `certificate_type_id.eq.${certTypeId},certificate_type_id.is.null`
-        );
-        customQuery = customQuery.or(
-          `certificate_type_id.eq.${certTypeId},certificate_type_id.is.null`
-        );
         tierQuery = tierQuery.or(
           `certificate_type_id.eq.${certTypeId},certificate_type_id.is.null`
         );
       }
 
-      const [reqRes, customRes, scholarshipRes, majorsRes] = await Promise.all([
-        reqQuery,
-        customQuery,
+      const [rules, tierRes, majorsRes] = await Promise.all([
+        loadProgramRules(supabase, programId, certTypeId),
         tierQuery,
         supabase
           .from("majors")
@@ -208,28 +176,14 @@ export default function EvaluatePage() {
           .order("sort_order"),
       ]);
 
-      // Merge multiple requirement rows into one (if there are both cert-specific and null rows)
-      const reqRows = (reqRes.data || []) as Requirement[];
-      const req: Requirement = reqRows.length > 0 ? { ...reqRows[0] } : ({} as Requirement);
-      // If multiple rows, merge: cert-specific takes precedence, but also include null-cert fields
-      if (reqRows.length > 1) {
-        for (const row of reqRows) {
-          for (const [key, value] of Object.entries(row)) {
-            if (value !== null && value !== undefined && value !== false) {
-              (req as Record<string, unknown>)[key] = value;
-            }
-          }
-        }
-      }
-
-      const customReqs = (customRes.data as CustomRequirement[]) || [];
-      const tiers = (scholarshipRes.data as ScholarshipTier[]) || [];
+      const tiers = (tierRes.data as ScholarshipTier[]) || [];
       const fetchedMajors = (majorsRes.data as Major[]) || [];
 
-      setRequirementData({ req, customReqs, scholarshipTiers: tiers });
+      setProgramRules(rules);
+      setScholarshipTiers(tiers);
       setMajors(fetchedMajors);
 
-      const built = buildQuestionsFromRequirements(req, customReqs, tiers, fetchedMajors);
+      const built = buildQuestionsFromRules(rules, tiers, fetchedMajors);
       setQuestions(built);
       setCurrentQuestionIndex(0);
       setAnswers([]);
@@ -237,7 +191,7 @@ export default function EvaluatePage() {
       setLoading(false);
 
       if (built.length === 0) {
-        const evalResult = evaluateAnswers([], req, customReqs, tiers, built);
+        const evalResult = evaluateRuleAnswers([], rules, built, tiers);
         setResult(evalResult);
         setStep("result");
       }
@@ -302,12 +256,11 @@ export default function EvaluatePage() {
 
     if (currentQ.isBlocking && value === "no") {
       setBlockedAtQuestionIndex(currentQuestionIndex);
-      const evalResult = evaluateAnswers(
+      const evalResult = evaluateRuleAnswers(
         newAnswers,
-        requirementData!.req,
-        requirementData!.customReqs,
-        requirementData!.scholarshipTiers,
-        questions
+        programRules,
+        questions,
+        scholarshipTiers
       );
       setResult(evalResult);
       setStep("result");
@@ -369,12 +322,11 @@ export default function EvaluatePage() {
       setCurrentQuestionIndex(currentQuestionIndex + 1);
     } else {
       setBlockedAtQuestionIndex(null);
-      const evalResult = evaluateAnswers(
+      const evalResult = evaluateRuleAnswers(
         newAnswers,
-        requirementData!.req,
-        requirementData!.customReqs,
-        requirementData!.scholarshipTiers,
-        updatedQuestions
+        programRules,
+        updatedQuestions,
+        scholarshipTiers
       );
       setResult(evalResult);
       setStep("result");
@@ -450,7 +402,8 @@ export default function EvaluatePage() {
     setResult(null);
     setCurrentQuestionIndex(0);
     setBlockedAtQuestionIndex(null);
-    setRequirementData(null);
+    setProgramRules([]);
+    setScholarshipTiers([]);
     setMajors([]);
   }
 
