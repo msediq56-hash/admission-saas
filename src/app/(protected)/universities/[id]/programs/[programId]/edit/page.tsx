@@ -105,7 +105,6 @@ export default function EditProgramPage({
   // ─── Rule-based tabs ───
   const [tabs, setTabs] = useState<RuleTab[]>([]);
   const [activeTabIndex, setActiveTabIndex] = useState(0);
-  const [isUniversal, setIsUniversal] = useState(true);
   const [showCertTypePicker, setShowCertTypePicker] = useState(false);
 
   const [certTypes, setCertTypes] = useState<CertificateType[]>([]);
@@ -187,14 +186,18 @@ export default function EditProgramPage({
       rulesByCert.get(key)!.push(rule);
     }
 
-    const hasSpecificCertTypes = allRules.some((r) => r.certificate_type_id !== null);
+    const certTypeMap = new Map(
+      allCertTypes.map((ct: { id: string; slug: string; name_ar: string; sort_order: number }) => [ct.id, ct])
+    );
 
-    if (!hasSpecificCertTypes) {
-      // Universal mode
-      const universalRules = rulesByCert.get(null) || [];
-      const tabData: RuleTab = {
+    const newTabs: RuleTab[] = [];
+
+    // Legacy: if there are universal rules (certificate_type_id = null), show in special tab
+    const universalRules = rulesByCert.get(null) || [];
+    if (universalRules.length > 0) {
+      newTabs.push({
         certTypeId: null,
-        certTypeName: t("admin.universalRequirements"),
+        certTypeName: "غير مصنف",
         reqRowId: reqRowMap["__universal__"] || null,
         rules: universalRules.map((r) => ({
           id: r.id,
@@ -205,47 +208,37 @@ export default function EditProgramPage({
           sort_order: r.sort_order,
           is_enabled: r.is_enabled,
         })),
-      };
-      setTabs([tabData]);
-      setIsUniversal(true);
-    } else {
-      // Multi-cert mode
-      const certTypeMap = new Map(
-        allCertTypes.map((ct: { id: string; slug: string; name_ar: string; sort_order: number }) => [ct.id, ct])
-      );
-
-      // Get distinct cert type IDs from rules
-      const certTypeIds = Array.from(new Set(allRules.filter((r) => r.certificate_type_id).map((r) => r.certificate_type_id!)));
-
-      // Sort by cert type sort_order
-      certTypeIds.sort((a, b) => {
-        const aSort = certTypeMap.get(a)?.sort_order ?? 999;
-        const bSort = certTypeMap.get(b)?.sort_order ?? 999;
-        return aSort - bSort;
       });
-
-      const newTabs: RuleTab[] = certTypeIds.map((ctId) => {
-        const certRules = rulesByCert.get(ctId) || [];
-        return {
-          certTypeId: ctId,
-          certTypeName: certTypeMap.get(ctId)?.name_ar || "—",
-          reqRowId: reqRowMap[ctId] || null,
-          rules: certRules.map((r) => ({
-            id: r.id,
-            rule_type: r.rule_type,
-            config: r.config,
-            effect: r.effect,
-            effect_message: r.effect_message,
-            sort_order: r.sort_order,
-            is_enabled: r.is_enabled,
-          })),
-        };
-      });
-
-      setTabs(newTabs);
-      setIsUniversal(false);
     }
 
+    // Cert-specific tabs
+    const certTypeIds = Array.from(new Set(allRules.filter((r) => r.certificate_type_id).map((r) => r.certificate_type_id!)));
+    certTypeIds.sort((a, b) => {
+      const aSort = certTypeMap.get(a)?.sort_order ?? 999;
+      const bSort = certTypeMap.get(b)?.sort_order ?? 999;
+      return aSort - bSort;
+    });
+
+    for (const ctId of certTypeIds) {
+      const certRules = rulesByCert.get(ctId) || [];
+      newTabs.push({
+        certTypeId: ctId,
+        certTypeName: certTypeMap.get(ctId)?.name_ar || "—",
+        reqRowId: reqRowMap[ctId] || null,
+        rules: certRules.map((r) => ({
+          id: r.id,
+          rule_type: r.rule_type,
+          config: r.config,
+          effect: r.effect,
+          effect_message: r.effect_message,
+          sort_order: r.sort_order,
+          is_enabled: r.is_enabled,
+        })),
+      });
+    }
+
+    // If no rules at all → empty tabs array (empty state)
+    setTabs(newTabs);
     setActiveTabIndex(0);
 
     // Load majors with their subject requirements
@@ -343,141 +336,28 @@ export default function EditProgramPage({
   /*  Cert type tab management                                         */
   /* ---------------------------------------------------------------- */
 
-  async function handleAddCertType(certTypeId: string) {
+  function handleAddCertType(certTypeId: string) {
     const ct = certTypes.find((c) => c.id === certTypeId);
     if (!ct) return;
 
-    if (isUniversal && tabs.length === 1 && tabs[0].certTypeId === null) {
-      // Converting from universal → first cert-specific tab
-      const universalTab = tabs[0];
-
-      if (universalTab.rules.length === 0) {
-        // No rules to convert — just create an empty cert-specific tab locally
-        const newTab: RuleTab = {
-          certTypeId: ct.id,
-          certTypeName: ct.name_ar,
-          reqRowId: null,
-          rules: [],
-        };
-        setTabs([newTab]);
-        setActiveTabIndex(0);
-        setIsUniversal(false);
-        setShowCertTypePicker(false);
-        setToast(`تم إضافة تبويب ${ct.name_ar}`);
-        setTimeout(() => setToast(""), 3000);
-      } else {
-        // Has rules — save them under the new cert type via API
-        setSaving(true);
-        await fetch(`/api/rules/${programId}`, {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            certificate_type_id: certTypeId,
-            rules: universalTab.rules,
-            req_row_id: universalTab.reqRowId,
-          }),
-        });
-
-        // Delete old universal rules
-        await fetch(`/api/rules/${programId}`, {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            certificate_type_id: null,
-            rules: [],
-            req_row_id: null,
-          }),
-        });
-
-        // Also convert the old requirements row cert type
-        if (universalTab.reqRowId) {
-          await fetch(`/api/programs/${programId}`, {
-            method: "PATCH",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              convert_cert_type: {
-                req_row_id: universalTab.reqRowId,
-                from_cert_type_id: null,
-                to_cert_type_id: certTypeId,
-              },
-            }),
-          });
-        }
-
-        setSaving(false);
-        setShowCertTypePicker(false);
-        setToast(`تم نسخ الشروط العامة إلى تبويب ${ct.name_ar}`);
-        setTimeout(() => setToast(""), 3000);
-        await loadData();
-        // After reload, if tabs were created from DB use them; otherwise fall back
-        setTabs((prev) => {
-          const idx = prev.findIndex((tab) => tab.certTypeId === certTypeId);
-          if (idx >= 0) {
-            setActiveTabIndex(idx);
-            return prev;
-          }
-          // Fallback: loadData found nothing — create the tab locally
-          const fallbackTab: RuleTab = {
-            certTypeId: ct.id,
-            certTypeName: ct.name_ar,
-            reqRowId: null,
-            rules: universalTab.rules,
-          };
-          setIsUniversal(false);
-          setActiveTabIndex(0);
-          return [fallbackTab];
-        });
-      }
-    } else {
-      // Already in multi-cert mode — add new empty tab
-      const newTab: RuleTab = {
-        certTypeId: ct.id,
-        certTypeName: ct.name_ar,
-        reqRowId: null,
-        rules: [],
-      };
-      setTabs((prev) => [...prev, newTab]);
-      setActiveTabIndex(tabs.length);
-      setShowCertTypePicker(false);
-    }
+    const newTab: RuleTab = {
+      certTypeId: ct.id,
+      certTypeName: ct.name_ar,
+      reqRowId: null,
+      rules: [],
+    };
+    setTabs((prev) => [...prev, newTab]);
+    setActiveTabIndex(tabs.length);
+    setShowCertTypePicker(false);
+    setToast(`تم إضافة تبويب ${ct.name_ar}`);
+    setTimeout(() => setToast(""), 3000);
   }
 
   async function handleRemoveCertType(tabIndex: number) {
     const tab = tabs[tabIndex];
     if (!confirm(t("admin.confirmRemoveCertType"))) return;
 
-    if (tabs.length <= 1) {
-      // Removing the LAST cert-specific tab → convert back to universal
-      if (tab.reqRowId && tab.certTypeId) {
-        setSaving(true);
-        await fetch(`/api/programs/${programId}`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            convert_cert_type: {
-              req_row_id: tab.reqRowId,
-              from_cert_type_id: tab.certTypeId,
-              to_cert_type_id: null,
-            },
-          }),
-        });
-        setSaving(false);
-      }
-
-      setTabs([{
-        certTypeId: null,
-        certTypeName: t("admin.universalRequirements"),
-        reqRowId: tab.reqRowId,
-        rules: tab.rules,
-      }]);
-      setActiveTabIndex(0);
-      setIsUniversal(true);
-      setToast("تم تحويل الشروط إلى شروط عامة");
-      setTimeout(() => setToast(""), 3000);
-      return;
-    }
-
-    // Removing one of multiple tabs — delete rules from DB
+    // Delete rules from DB
     setSaving(true);
     await fetch(`/api/rules/${programId}`, {
       method: "PUT",
@@ -617,7 +497,6 @@ export default function EditProgramPage({
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!activeTab) return;
     setSaving(true);
     setError("");
     setSaved(false);
@@ -636,34 +515,36 @@ export default function EditProgramPage({
     });
 
     // Save rules for the active tab via rules API (includes dual-write)
-    const res = await fetch(`/api/rules/${programId}`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        certificate_type_id: activeTab.certTypeId,
-        rules: activeTab.rules.map((r, i) => ({
-          ...r,
-          sort_order: i,
-        })),
-        req_row_id: activeTab.reqRowId,
-      }),
-    });
+    if (activeTab) {
+      const res = await fetch(`/api/rules/${programId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          certificate_type_id: activeTab.certTypeId,
+          rules: activeTab.rules.map((r, i) => ({
+            ...r,
+            sort_order: i,
+          })),
+          req_row_id: activeTab.reqRowId,
+        }),
+      });
 
-    if (!res.ok) {
+      if (!res.ok) {
+        const data = await res.json();
+        setError(data.error || t("admin.saveError"));
+        setSaving(false);
+        return;
+      }
+
+      // Update reqRowId if a new one was created
       const data = await res.json();
-      setError(data.error || t("admin.saveError"));
-      setSaving(false);
-      return;
-    }
-
-    // Update reqRowId if a new one was created
-    const data = await res.json();
-    if (data.req_row_id) {
-      setTabs((prev) =>
-        prev.map((tab, i) =>
-          i === activeTabIndex ? { ...tab, reqRowId: data.req_row_id } : tab
-        )
-      );
+      if (data.req_row_id) {
+        setTabs((prev) =>
+          prev.map((tab, i) =>
+            i === activeTabIndex ? { ...tab, reqRowId: data.req_row_id } : tab
+          )
+        );
+      }
     }
 
     setSaving(false);
@@ -807,149 +688,138 @@ export default function EditProgramPage({
           </div>
         </section>
 
-        {/* ============ Certificate Type Tabs ============ */}
-        {!isUniversal && (
-          <div className="flex flex-wrap items-center gap-1 border-b border-white/10 pb-0">
-            {tabs.map((tab, idx) => (
-              <div key={tab.certTypeId || "__universal__"} className="flex items-center">
-                <button
-                  type="button"
-                  onClick={() => setActiveTabIndex(idx)}
-                  className={`px-4 py-2.5 text-sm font-medium rounded-t-lg transition ${
-                    idx === activeTabIndex
-                      ? "bg-white/10 text-white border-b-2 border-blue-500"
-                      : "text-slate-400 hover:text-white hover:bg-white/5"
-                  }`}
+        {/* ============ Certificate Type Tabs + Add Cert Type ============ */}
+        <div className="flex flex-wrap items-center gap-1 border-b border-white/10 pb-0">
+          {tabs.map((tab, idx) => (
+            <div key={tab.certTypeId || "__legacy__"} className="flex items-center">
+              <button
+                type="button"
+                onClick={() => setActiveTabIndex(idx)}
+                className={`px-4 py-2.5 text-sm font-medium rounded-t-lg transition ${
+                  idx === activeTabIndex
+                    ? "bg-white/10 text-white border-b-2 border-blue-500"
+                    : "text-slate-400 hover:text-white hover:bg-white/5"
+                }`}
+              >
+                {tab.certTypeName}
+              </button>
+              <button
+                type="button"
+                onClick={() => handleRemoveCertType(idx)}
+                className="px-1.5 py-1 text-xs text-red-400/60 hover:text-red-400 transition"
+                title={t("admin.removeCertType")}
+              >
+                ✕
+              </button>
+            </div>
+          ))}
+
+          {/* Add cert type dropdown */}
+          {availableCertTypes.length > 0 && (
+            showCertTypePicker ? (
+              <div className="flex items-center gap-2 px-2">
+                <select
+                  onChange={(e) => {
+                    if (e.target.value) handleAddCertType(e.target.value);
+                  }}
+                  defaultValue=""
+                  className="rounded-lg border border-white/10 bg-[#0f1c2e] px-3 py-1.5 text-sm text-white focus:border-blue-500 focus:outline-none"
                 >
-                  {tab.certTypeName}
-                </button>
+                  <option value="" className="bg-[#0f1c2e] text-white">
+                    {t("admin.selectCertTypeToAdd")}
+                  </option>
+                  {availableCertTypes.map((ct) => (
+                    <option key={ct.id} value={ct.id} className="bg-[#0f1c2e] text-white">
+                      {ct.name_ar}
+                    </option>
+                  ))}
+                </select>
                 <button
                   type="button"
-                  onClick={() => handleRemoveCertType(idx)}
-                  className="px-1.5 py-1 text-xs text-red-400/60 hover:text-red-400 transition"
-                  title={t("admin.removeCertType")}
+                  onClick={() => setShowCertTypePicker(false)}
+                  className="text-xs text-slate-400 hover:text-white"
                 >
                   ✕
                 </button>
               </div>
-            ))}
+            ) : (
+              <button
+                type="button"
+                onClick={() => setShowCertTypePicker(true)}
+                className="px-3 py-2.5 text-sm text-blue-400 hover:text-blue-300 transition"
+              >
+                + {t("admin.addCertType")}
+              </button>
+            )
+          )}
+        </div>
 
-            {/* Add cert type */}
+        {/* ============ Empty state: no tabs at all ============ */}
+        {tabs.length === 0 && (
+          <section className="rounded-xl border border-dashed border-white/20 bg-white/[0.02] p-8 text-center space-y-4">
+            <p className="text-base text-slate-400">لا توجد شروط بعد</p>
+            <p className="text-sm text-slate-500">أضف نوع شهادة لبدء تحديد شروط القبول</p>
             {availableCertTypes.length > 0 && (
-              showCertTypePicker ? (
-                <div className="flex items-center gap-2 px-2">
-                  <select
-                    onChange={(e) => {
-                      if (e.target.value) handleAddCertType(e.target.value);
-                    }}
-                    defaultValue=""
-                    className="rounded-lg border border-white/10 bg-[#0f1c2e] px-3 py-1.5 text-sm text-white focus:border-blue-500 focus:outline-none"
-                  >
-                    <option value="" className="bg-[#0f1c2e] text-white">
-                      {t("admin.selectCertTypeToAdd")}
-                    </option>
-                    {availableCertTypes.map((ct) => (
-                      <option key={ct.id} value={ct.id} className="bg-[#0f1c2e] text-white">
-                        {ct.name_ar}
-                      </option>
-                    ))}
-                  </select>
-                  <button
-                    type="button"
-                    onClick={() => setShowCertTypePicker(false)}
-                    className="text-xs text-slate-400 hover:text-white"
-                  >
-                    ✕
-                  </button>
-                </div>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => setShowCertTypePicker(true)}
-                  className="px-3 py-2.5 text-sm text-blue-400 hover:text-blue-300 transition"
+              <div className="flex justify-center">
+                <select
+                  onChange={(e) => {
+                    if (e.target.value) handleAddCertType(e.target.value);
+                  }}
+                  defaultValue=""
+                  className="rounded-lg border border-blue-500/30 bg-blue-600/10 px-5 py-2.5 text-sm font-medium text-blue-400 focus:border-blue-500 focus:outline-none"
                 >
-                  + {t("admin.addCertType")}
-                </button>
-              )
-            )}
-          </div>
-        )}
-
-        {/* Universal label */}
-        {isUniversal && (
-          <div className="flex items-center justify-between">
-            <h2 className="text-lg font-semibold text-slate-300">
-              {t("admin.universalRequirements")}
-            </h2>
-            {availableCertTypes.length > 0 && (
-              showCertTypePicker ? (
-                <div className="flex items-center gap-2">
-                  <select
-                    onChange={(e) => {
-                      if (e.target.value) handleAddCertType(e.target.value);
-                    }}
-                    defaultValue=""
-                    className="rounded-lg border border-white/10 bg-[#0f1c2e] px-3 py-1.5 text-sm text-white focus:border-blue-500 focus:outline-none"
-                  >
-                    <option value="" className="bg-[#0f1c2e] text-white">
-                      {t("admin.selectCertTypeToAdd")}
+                  <option value="" className="bg-[#0f1c2e] text-white">
+                    + إضافة نوع شهادة
+                  </option>
+                  {availableCertTypes.map((ct) => (
+                    <option key={ct.id} value={ct.id} className="bg-[#0f1c2e] text-white">
+                      {ct.name_ar}
                     </option>
-                    {availableCertTypes.map((ct) => (
-                      <option key={ct.id} value={ct.id} className="bg-[#0f1c2e] text-white">
-                        {ct.name_ar}
-                      </option>
-                    ))}
-                  </select>
-                  <button
-                    type="button"
-                    onClick={() => setShowCertTypePicker(false)}
-                    className="text-xs text-slate-400 hover:text-white"
-                  >
-                    ✕
-                  </button>
-                </div>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => setShowCertTypePicker(true)}
-                  className="text-sm text-blue-400 hover:text-blue-300 transition"
-                >
-                  + {t("admin.addCertType")}
-                </button>
-              )
+                  ))}
+                </select>
+              </div>
             )}
-          </div>
+          </section>
         )}
 
         {/* ============ Requirements Rules (active tab) ============ */}
-        <section className="rounded-xl border border-white/10 bg-white/5 p-6 space-y-4">
-          <div className="flex items-center justify-between">
-            <h2 className="text-lg font-semibold text-white">{t("admin.requirements")}</h2>
-            <AddRuleMenu
-              certSlug={activeCertSlug}
-              existingRuleTypes={rules.map((r) => r.rule_type)}
-              onAdd={addRule}
-            />
-          </div>
-
-          <div className="space-y-3">
-            {rules.map((rule, index) => (
-              <RuleCard
-                key={rule.id || `new-${index}-${rule.rule_type}`}
-                rule={rule}
-                onChange={(updated) => updateRule(index, updated)}
-                onRemove={() => removeRule(index)}
-              />
-            ))}
-
-            {rules.length === 0 && (
-              <div className="text-center py-8">
-                <p className="text-sm text-slate-500 mb-2">لا توجد شروط بعد</p>
-                <p className="text-xs text-slate-600">اضغط &quot;+ إضافة شرط&quot; لإضافة شروط القبول</p>
+        {activeTab && (
+          <section className="rounded-xl border border-white/10 bg-white/5 p-6 space-y-4">
+            {/* Legacy warning for unclassified (null cert type) tab */}
+            {activeTab.certTypeId === null && (
+              <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-300">
+                هذه شروط قديمة بدون نوع شهادة محدد. يرجى نقلها إلى تبويب شهادة.
               </div>
             )}
-          </div>
-        </section>
+
+            <div className="flex items-center justify-between">
+              <h2 className="text-lg font-semibold text-white">{t("admin.requirements")}</h2>
+              <AddRuleMenu
+                certSlug={activeCertSlug}
+                existingRuleTypes={rules.map((r) => r.rule_type)}
+                onAdd={addRule}
+              />
+            </div>
+
+            <div className="space-y-3">
+              {rules.map((rule, index) => (
+                <RuleCard
+                  key={rule.id || `new-${index}-${rule.rule_type}`}
+                  rule={rule}
+                  onChange={(updated) => updateRule(index, updated)}
+                  onRemove={() => removeRule(index)}
+                />
+              ))}
+
+              {rules.length === 0 && (
+                <div className="text-center py-8">
+                  <p className="text-sm text-slate-500 mb-2">لا توجد شروط بعد</p>
+                  <p className="text-xs text-slate-600">اضغط &quot;+ إضافة شرط&quot; لإضافة شروط القبول</p>
+                </div>
+              )}
+            </div>
+          </section>
+        )}
 
         {error && <p className="text-sm text-red-400">{error}</p>}
 
