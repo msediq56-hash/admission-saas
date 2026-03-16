@@ -93,9 +93,9 @@ function ResultSection({
         </span>
       </div>
       <div className="grid gap-4 sm:grid-cols-2">
-        {results.map((r) => (
+        {results.map((r, i) => (
           <ResultCard
-            key={r.programId}
+            key={`${r.programId}-${i}`}
             result={r}
             medicalLabel={medicalLabel}
             getCategoryLabel={getCategoryLabel}

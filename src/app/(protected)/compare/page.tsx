@@ -133,8 +133,12 @@ export default function ComparePage() {
       certificate_type_id: string | null;
     };
 
+    // Deduplicate rules by id (multiple migration runs may create duplicates)
     const rulesByKey = new Map<string, RuleRow[]>();
+    const seenRuleIds = new Set<string>();
     for (const r of (rulesRes.data || []) as RuleRow[]) {
+      if (seenRuleIds.has(r.id)) continue;
+      seenRuleIds.add(r.id);
       const key = `${r.program_id}|${r.certificate_type_id || "null"}`;
       const arr = rulesByKey.get(key) || [];
       arr.push(r);
