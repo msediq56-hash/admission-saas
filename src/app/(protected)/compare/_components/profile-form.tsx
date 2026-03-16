@@ -50,8 +50,7 @@ export function ProfileForm({
   const [satScore, setSatScore] = useState(1200);
   const [hasGpa, setHasGpa] = useState(false);
   const [gpa, setGpa] = useState(85);
-  const [hasBachelor, setHasBachelor] = useState(false);
-  const [hasResearchPlan, setHasResearchPlan] = useState(false);
+  // bachelor and research_plan removed from compare form — will be used later for Master's cert type
 
   // Dynamic answers
   const [dynamicAnswers, setDynamicAnswers] = useState<
@@ -88,8 +87,6 @@ export function ProfileForm({
     setSatScore(1200);
     setHasGpa(false);
     setGpa(85);
-    setHasBachelor(false);
-    setHasResearchPlan(false);
     setALevelCount(1);
     setALevelCCount(0);
     setDynamicAnswers({});
@@ -106,12 +103,12 @@ export function ProfileForm({
     const profile: StudentProfile = {
       hasHighSchool,
       has12Years,
-      hasBachelor,
+      hasBachelor: false,
       ielts: hasIelts ? ieltsScore : null,
       hasSAT,
       satScore: hasSAT ? satScore : null,
       gpa: hasGpa ? gpa : null,
-      hasResearchPlan,
+      hasResearchPlan: false,
       certificateType,
       aLevelCount: certificateType === "british" ? aLevelCount : null,
       aLevelCCount: certificateType === "british" ? aLevelCCount : null,
@@ -268,15 +265,6 @@ export function ProfileForm({
               noLabel={t("comparison.no")}
             />
           )}
-          {has("bachelor") && (
-            <ToggleField
-              label={t("comparison.hasBachelor")}
-              value={hasBachelor}
-              onChange={setHasBachelor}
-              yesLabel={t("comparison.yes")}
-              noLabel={t("comparison.no")}
-            />
-          )}
 
           {/* Language cert / IELTS */}
           {has("language_cert") && (
@@ -421,15 +409,6 @@ export function ProfileForm({
             </div>
           )}
 
-          {has("research_plan") && (
-            <ToggleField
-              label={t("comparison.hasResearchPlan")}
-              value={hasResearchPlan}
-              onChange={setHasResearchPlan}
-              yesLabel={t("comparison.yes")}
-              noLabel={t("comparison.no")}
-            />
-          )}
         </div>
       )}
 

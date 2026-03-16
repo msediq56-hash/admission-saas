@@ -22,6 +22,13 @@ import { ResultsList } from "./_components/results-list";
 
 type FilterKey = "foundation" | "bachelor" | "master" | "phd" | "medical";
 
+// Hardcoded mapping: cert type → which form fields to show in the compare form
+// This is ONLY for the UI — the evaluation engine still uses all rules
+const CERT_FORM_FIELDS: Record<string, Set<string>> = {
+  arabic: new Set(["high_school", "twelve_years", "gpa", "language_cert", "sat"]),
+  british: new Set(["a_levels", "language_cert"]),
+};
+
 export default function ComparePage() {
   const t = useTranslations();
   const user = useAuth();
@@ -34,10 +41,11 @@ export default function ComparePage() {
 
   // Load relevant rule types and dynamic fields when cert type changes
   const handleCertificateTypeChange = useCallback(async (certType: "arabic" | "british") => {
-    setRelevantRuleTypes(null); // show loading
+    // Use hardcoded mapping for form fields — no DB query needed
+    setRelevantRuleTypes(CERT_FORM_FIELDS[certType] || new Set());
     setResults(null); // clear previous results
 
-    // Find the certificate_type_id for this slug
+    // Find the certificate_type_id for this slug (still needed for dynamic fields)
     const { data: certTypeRow } = await supabase
       .from("certificate_types")
       .select("id")
@@ -45,29 +53,6 @@ export default function ComparePage() {
       .single();
 
     const certTypeId = certTypeRow?.id || null;
-
-    // Load all enabled rules for active programs that match this cert type (or universal)
-    let rulesQuery = supabase
-      .from("requirement_rules")
-      .select("rule_type, certificate_type_id")
-      .eq("is_enabled", true)
-      .eq("tenant_id", user.tenantId);
-
-    if (certTypeId) {
-      // Match cert-specific OR universal (null)
-      rulesQuery = rulesQuery.or(`certificate_type_id.eq.${certTypeId},certificate_type_id.is.null`);
-    }
-
-    const { data: rules } = await rulesQuery;
-
-    // Extract distinct rule types
-    const types = new Set<string>();
-    if (rules) {
-      for (const r of rules) {
-        types.add(r.rule_type);
-      }
-    }
-    setRelevantRuleTypes(types);
 
     // Load dynamic fields (custom_requirements with show_in_comparison)
     const { data: customData } = await supabase
