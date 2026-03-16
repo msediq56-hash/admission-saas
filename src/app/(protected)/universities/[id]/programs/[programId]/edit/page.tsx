@@ -8,6 +8,9 @@ import { canEditUniversities } from "@/lib/permissions";
 import { createSupabaseBrowserClient } from "@/lib/supabase-browser";
 import Link from "next/link";
 import { use } from "react";
+import RuleCard from "@/components/rules/RuleCard";
+import type { RuleData } from "@/components/rules/RuleCard";
+import AddRuleMenu from "@/components/rules/AddRuleMenu";
 
 /* ------------------------------------------------------------------ */
 /*  Interfaces                                                         */
@@ -16,69 +19,6 @@ import { use } from "react";
 interface OptionEffect {
   effect: "none" | "blocks_admission" | "makes_conditional";
   message: string | null;
-}
-
-interface CustomRequirement {
-  id?: string;
-  certificate_type_id?: string | null;
-  question_text: string;
-  question_type: "yes_no" | "select";
-  options?: string[];
-  effect: "blocks_admission" | "makes_conditional";
-  negative_message: string;
-  positive_message: string;
-  sort_order: number;
-  option_effects?: Record<string, OptionEffect> | null;
-  show_in_comparison: boolean;
-  comparison_input_type: "toggle" | "number" | "select" | null;
-  comparison_key: string;
-}
-
-interface LanguageCertEntry {
-  type: string;
-  min_score: number;
-}
-
-interface Requirements {
-  requires_hs: boolean;
-  requires_12_years: boolean;
-  requires_bachelor: boolean;
-  requires_ielts: boolean;
-  ielts_min: number | null;
-  ielts_effect: string | null;
-  requires_sat: boolean;
-  sat_min: number | null;
-  sat_effect: string | null;
-  requires_gpa: boolean;
-  gpa_min: number | null;
-  requires_entrance_exam: boolean;
-  requires_portfolio: boolean;
-  requires_research_plan: boolean;
-  result_notes: string | null;
-  // A Level fields (British certificates)
-  requires_a_levels: boolean;
-  a_level_subjects_min: number | null;
-  a_level_min_grade: string | null;
-  a_level_requires_core: boolean;
-  a_level_effect: string | null;
-  // AS Level fields (British certificates)
-  requires_as_levels: boolean;
-  as_level_subjects_min: number | null;
-  as_level_min_grade: string | null;
-  as_level_effect: string | null;
-  // O Level / GCSE fields (British certificates)
-  requires_o_levels: boolean;
-  o_level_subjects_min: number | null;
-  o_level_min_grade: string | null;
-  o_level_effect: string | null;
-  // IB fields (International Baccalaureate)
-  requires_ib: boolean;
-  ib_min_points: number | null;
-  ib_effect: string | null;
-  // Language certificate fields (multi-cert: IELTS, TOEFL, Duolingo, etc.)
-  requires_language_cert: boolean;
-  accepted_language_certs: LanguageCertEntry[] | null;
-  language_cert_effect: string | null;
 }
 
 interface CertificateType {
@@ -110,170 +50,37 @@ interface MajorData {
   _expanded: boolean;
 }
 
-interface CertTypeTab {
+interface RuleTab {
   certTypeId: string | null;
   certTypeName: string;
-  reqRowId: string | null;
-  reqs: Requirements;
-  customReqs: CustomRequirement[];
+  reqRowId: string | null;  // old requirements row id (for dual-write)
+  rules: RuleData[];
 }
 
-const defaultReqs: Requirements = {
-  requires_hs: false,
-  requires_12_years: false,
-  requires_bachelor: false,
-  requires_ielts: false,
-  ielts_min: null,
-  ielts_effect: null,
-  requires_sat: false,
-  sat_min: null,
-  sat_effect: null,
-  requires_gpa: false,
-  gpa_min: null,
-  requires_entrance_exam: false,
-  requires_portfolio: false,
-  requires_research_plan: false,
-  result_notes: null,
-  requires_a_levels: false,
-  a_level_subjects_min: null,
-  a_level_min_grade: null,
-  a_level_requires_core: false,
-  a_level_effect: null,
-  requires_as_levels: false,
-  as_level_subjects_min: null,
-  as_level_min_grade: null,
-  as_level_effect: null,
-  requires_o_levels: false,
-  o_level_subjects_min: null,
-  o_level_min_grade: null,
-  o_level_effect: null,
-  requires_ib: false,
-  ib_min_points: null,
-  ib_effect: null,
-  requires_language_cert: false,
-  accepted_language_certs: null,
-  language_cert_effect: null,
-};
-
 /* ------------------------------------------------------------------ */
-/*  Field visibility per certificate type                              */
+/*  Default config for new rules                                       */
 /* ------------------------------------------------------------------ */
 
-type FieldGroup = "hs_12years" | "gpa" | "language_cert" | "sat" | "entrance_exam" | "portfolio" | "research_plan" | "bachelor" | "a_levels" | "as_levels" | "o_levels" | "ib";
-
-function getVisibleFields(certTypeSlug: string | null, programCategory: string): Set<FieldGroup> {
-  const fields = new Set<FieldGroup>();
-
-  // Common fields for ALL cert types (including universal)
-  fields.add("language_cert");
-  fields.add("sat");
-  fields.add("entrance_exam");
-  fields.add("portfolio");
-  fields.add("research_plan");
-
-  // Master/PhD always need bachelor
-  if (programCategory === "master" || programCategory === "phd") {
-    fields.add("bachelor");
-  }
-
-  // Universal (null slug) → only common fields above
-  if (!certTypeSlug) {
-    return fields;
-  }
-
-  switch (certTypeSlug) {
-    case "arabic":
-      fields.add("hs_12years");
-      fields.add("gpa");
-      break;
-    case "british":
-      fields.add("a_levels");
-      fields.add("as_levels");
-      fields.add("o_levels");
-      break;
-    case "ib":
-      fields.add("ib");
-      break;
-    case "american":
-      fields.add("hs_12years");
-      fields.add("gpa");
-      break;
+function defaultConfigForType(ruleType: string): Record<string, unknown> {
+  switch (ruleType) {
+    case "language_cert":
+      return { accepted: [] };
+    case "sat":
+      return { min_score: null };
+    case "gpa":
+      return { min_gpa: null };
+    case "a_levels":
+      return { subjects_min: null, min_grade: null, requires_core: false };
+    case "as_levels":
+    case "o_levels":
+      return { subjects_min: null, min_grade: null };
+    case "custom_yes_no":
+      return { question_text: "", question_type: "yes_no", negative_message: "", positive_message: "" };
+    case "custom_select":
+      return { question_text: "", question_type: "select", options: [], option_effects: {}, negative_message: "", positive_message: "" };
     default:
-      // Unknown cert type → show everything
-      fields.add("hs_12years");
-      fields.add("gpa");
-      fields.add("a_levels");
-      fields.add("as_levels");
-      fields.add("o_levels");
-      fields.add("ib");
-      fields.add("bachelor");
-      break;
+      return {};
   }
-
-  return fields;
-}
-
-const LANGUAGE_CERT_TYPES = ["IELTS", "TOEFL", "Duolingo", "Cambridge", "PTE"];
-
-/* ------------------------------------------------------------------ */
-/*  Helpers                                                            */
-/* ------------------------------------------------------------------ */
-
-function mapRowToReqs(row: Record<string, unknown>): Requirements {
-  return {
-    requires_hs: (row.requires_hs as boolean) ?? false,
-    requires_12_years: (row.requires_12_years as boolean) ?? false,
-    requires_bachelor: (row.requires_bachelor as boolean) ?? false,
-    requires_ielts: (row.requires_ielts as boolean) ?? false,
-    ielts_min: (row.ielts_min as number | null) ?? null,
-    ielts_effect: (row.ielts_effect as string | null) ?? null,
-    requires_sat: (row.requires_sat as boolean) ?? false,
-    sat_min: (row.sat_min as number | null) ?? null,
-    sat_effect: (row.sat_effect as string | null) ?? null,
-    requires_gpa: (row.requires_gpa as boolean) ?? false,
-    gpa_min: (row.gpa_min as number | null) ?? null,
-    requires_entrance_exam: (row.requires_entrance_exam as boolean) ?? false,
-    requires_portfolio: (row.requires_portfolio as boolean) ?? false,
-    requires_research_plan: (row.requires_research_plan as boolean) ?? false,
-    result_notes: (row.result_notes as string | null) ?? null,
-    requires_a_levels: (row.requires_a_levels as boolean) ?? false,
-    a_level_subjects_min: (row.a_level_subjects_min as number | null) ?? null,
-    a_level_min_grade: (row.a_level_min_grade as string | null) ?? null,
-    a_level_requires_core: (row.a_level_requires_core as boolean) ?? false,
-    a_level_effect: (row.a_level_effect as string | null) ?? null,
-    requires_as_levels: (row.requires_as_levels as boolean) ?? false,
-    as_level_subjects_min: (row.as_level_subjects_min as number | null) ?? null,
-    as_level_min_grade: (row.as_level_min_grade as string | null) ?? null,
-    as_level_effect: (row.as_level_effect as string | null) ?? null,
-    requires_o_levels: (row.requires_o_levels as boolean) ?? false,
-    o_level_subjects_min: (row.o_level_subjects_min as number | null) ?? null,
-    o_level_min_grade: (row.o_level_min_grade as string | null) ?? null,
-    o_level_effect: (row.o_level_effect as string | null) ?? null,
-    requires_ib: (row.requires_ib as boolean) ?? false,
-    ib_min_points: (row.ib_min_points as number | null) ?? null,
-    ib_effect: (row.ib_effect as string | null) ?? null,
-    requires_language_cert: (row.requires_language_cert as boolean) ?? false,
-    accepted_language_certs: (row.accepted_language_certs as LanguageCertEntry[] | null) ?? null,
-    language_cert_effect: (row.language_cert_effect as string | null) ?? null,
-  };
-}
-
-function mapCustomRow(cr: Record<string, unknown>): CustomRequirement {
-  return {
-    id: cr.id as string,
-    certificate_type_id: (cr.certificate_type_id as string | null) || null,
-    question_text: cr.question_text as string,
-    question_type: cr.question_type as "yes_no" | "select",
-    options: (cr.options as string[] | null) || undefined,
-    effect: cr.effect as "blocks_admission" | "makes_conditional",
-    negative_message: (cr.negative_message as string) || "",
-    positive_message: (cr.positive_message as string) || "",
-    sort_order: cr.sort_order as number,
-    option_effects: (cr.option_effects as Record<string, OptionEffect> | null) || null,
-    show_in_comparison: (cr.show_in_comparison as boolean) || false,
-    comparison_input_type: (cr.comparison_input_type as "toggle" | "number" | "select" | null) || null,
-    comparison_key: (cr.comparison_key as string) || "",
-  };
 }
 
 /* ------------------------------------------------------------------ */
@@ -293,11 +100,10 @@ export default function EditProgramPage({
 
   const [programName, setProgramName] = useState("");
   const [category, setCategory] = useState("bachelor");
-  const [originalComplexity, setOriginalComplexity] = useState("simple");
   const [isActive, setIsActive] = useState(true);
 
-  // ─── Cert-type tabs ───
-  const [tabs, setTabs] = useState<CertTypeTab[]>([]);
+  // ─── Rule-based tabs ───
+  const [tabs, setTabs] = useState<RuleTab[]>([]);
   const [activeTabIndex, setActiveTabIndex] = useState(0);
   const [isUniversal, setIsUniversal] = useState(true);
   const [showCertTypePicker, setShowCertTypePicker] = useState(false);
@@ -322,31 +128,20 @@ export default function EditProgramPage({
 
   // Derived state: active tab
   const activeTab = tabs[activeTabIndex] || null;
-  const reqs = activeTab?.reqs || defaultReqs;
-  const customReqs = activeTab?.customReqs || [];
+  const rules = activeTab?.rules || [];
 
-  // Get cert type slug for field visibility
+  // Get cert type slug for AddRuleMenu filtering
   const activeCertSlug = activeTab?.certTypeId
     ? certTypes.find((ct) => ct.id === activeTab.certTypeId)?.slug || null
     : null;
-  const visibleFields = getVisibleFields(activeCertSlug, category);
 
   const loadData = useCallback(async () => {
-    const [programRes, reqRes, customRes, certRes, majorsRes] = await Promise.all([
+    const [programRes, certRes, majorsRes] = await Promise.all([
       supabase
         .from("programs")
         .select("name, category, complexity_level, is_active")
         .eq("id", programId)
         .single(),
-      supabase
-        .from("requirements")
-        .select("*")
-        .eq("program_id", programId),
-      supabase
-        .from("custom_requirements")
-        .select("*")
-        .eq("program_id", programId)
-        .order("sort_order"),
       supabase
         .from("certificate_types")
         .select("id, slug, name_ar, sort_order")
@@ -361,65 +156,91 @@ export default function EditProgramPage({
     if (programRes.data) {
       setProgramName(programRes.data.name);
       setCategory(programRes.data.category);
-      setOriginalComplexity(programRes.data.complexity_level || "simple");
       setIsActive(programRes.data.is_active ?? true);
     }
 
-    // ─── Build cert-type tabs ───
-    const reqRows = reqRes.data || [];
-    const customRows = customRes.data || [];
     const allCertTypes = certRes.data || [];
-
     if (allCertTypes.length > 0) {
       setCertTypes(allCertTypes);
     }
 
-    const hasSpecificCertTypes = reqRows.some(
-      (r: Record<string, unknown>) => r.certificate_type_id !== null
-    );
+    // Load rules from requirement_rules via API
+    const rulesRes = await fetch(`/api/rules/${programId}`);
+    const rulesData = await rulesRes.json();
+    const allRules: Array<{
+      id: string;
+      certificate_type_id: string | null;
+      rule_type: string;
+      config: Record<string, unknown>;
+      effect: string;
+      effect_message: string | null;
+      sort_order: number;
+      is_enabled: boolean;
+    }> = rulesData.rules || [];
+    const reqRowMap: Record<string, string> = rulesData.req_row_map || {};
+
+    // Group rules by certificate_type_id
+    const rulesByCert = new Map<string | null, typeof allRules>();
+    for (const rule of allRules) {
+      const key = rule.certificate_type_id;
+      if (!rulesByCert.has(key)) rulesByCert.set(key, []);
+      rulesByCert.get(key)!.push(rule);
+    }
+
+    const hasSpecificCertTypes = allRules.some((r) => r.certificate_type_id !== null);
 
     if (!hasSpecificCertTypes) {
-      // Universal mode — single tab, no tab bar
-      const row = reqRows[0] || null;
-      const tabData: CertTypeTab = {
+      // Universal mode
+      const universalRules = rulesByCert.get(null) || [];
+      const tabData: RuleTab = {
         certTypeId: null,
         certTypeName: t("admin.universalRequirements"),
-        reqRowId: (row?.id as string) || null,
-        reqs: row ? mapRowToReqs(row) : { ...defaultReqs },
-        customReqs: customRows
-          .filter((cr: Record<string, unknown>) => !cr.certificate_type_id)
-          .map(mapCustomRow),
+        reqRowId: reqRowMap["__universal__"] || null,
+        rules: universalRules.map((r) => ({
+          id: r.id,
+          rule_type: r.rule_type,
+          config: r.config,
+          effect: r.effect,
+          effect_message: r.effect_message,
+          sort_order: r.sort_order,
+          is_enabled: r.is_enabled,
+        })),
       };
       setTabs([tabData]);
       setIsUniversal(true);
     } else {
-      // Multi-cert mode — one tab per cert type (no universal tab)
+      // Multi-cert mode
       const certTypeMap = new Map(
         allCertTypes.map((ct: { id: string; slug: string; name_ar: string; sort_order: number }) => [ct.id, ct])
       );
 
-      const certSpecificRows = reqRows
-        .filter((r: Record<string, unknown>) => r.certificate_type_id !== null)
-        .sort((a: Record<string, unknown>, b: Record<string, unknown>) => {
-          const aSort = certTypeMap.get(a.certificate_type_id as string)?.sort_order ?? 999;
-          const bSort = certTypeMap.get(b.certificate_type_id as string)?.sort_order ?? 999;
-          return aSort - bSort;
-        });
+      // Get distinct cert type IDs from rules
+      const certTypeIds = Array.from(new Set(allRules.filter((r) => r.certificate_type_id).map((r) => r.certificate_type_id!)));
 
-      const newTabs: CertTypeTab[] = certSpecificRows.map(
-        (row: Record<string, unknown>) => {
-          const ctId = row.certificate_type_id as string;
-          return {
-            certTypeId: ctId,
-            certTypeName: certTypeMap.get(ctId)?.name_ar || "—",
-            reqRowId: row.id as string,
-            reqs: mapRowToReqs(row),
-            customReqs: customRows
-              .filter((cr: Record<string, unknown>) => cr.certificate_type_id === ctId)
-              .map(mapCustomRow),
-          };
-        }
-      );
+      // Sort by cert type sort_order
+      certTypeIds.sort((a, b) => {
+        const aSort = certTypeMap.get(a)?.sort_order ?? 999;
+        const bSort = certTypeMap.get(b)?.sort_order ?? 999;
+        return aSort - bSort;
+      });
+
+      const newTabs: RuleTab[] = certTypeIds.map((ctId) => {
+        const certRules = rulesByCert.get(ctId) || [];
+        return {
+          certTypeId: ctId,
+          certTypeName: certTypeMap.get(ctId)?.name_ar || "—",
+          reqRowId: reqRowMap[ctId] || null,
+          rules: certRules.map((r) => ({
+            id: r.id,
+            rule_type: r.rule_type,
+            config: r.config,
+            effect: r.effect,
+            effect_message: r.effect_message,
+            sort_order: r.sort_order,
+            is_enabled: r.is_enabled,
+          })),
+        };
+      });
 
       setTabs(newTabs);
       setIsUniversal(false);
@@ -477,207 +298,43 @@ export default function EditProgramPage({
   }, [loadData]);
 
   /* ---------------------------------------------------------------- */
-  /*  Requirements helpers (operate on active tab)                     */
+  /*  Rule helpers (operate on active tab)                             */
   /* ---------------------------------------------------------------- */
 
-  function updateReq<K extends keyof Requirements>(key: K, value: Requirements[K]) {
+  function addRule(ruleType: string) {
     setTabs((prev) =>
-      prev.map((tab, i) =>
-        i === activeTabIndex ? { ...tab, reqs: { ...tab.reqs, [key]: value } } : tab
-      )
+      prev.map((tab, i) => {
+        if (i !== activeTabIndex) return tab;
+        const newRule: RuleData = {
+          rule_type: ruleType,
+          config: defaultConfigForType(ruleType),
+          effect: "blocks_admission",
+          effect_message: null,
+          sort_order: tab.rules.length,
+          is_enabled: true,
+        };
+        return { ...tab, rules: [...tab.rules, newRule] };
+      })
     );
   }
 
-  /* ---------------------------------------------------------------- */
-  /*  Custom requirements helpers (operate on active tab)              */
-  /* ---------------------------------------------------------------- */
-
-  function addCustomReq() {
+  function updateRule(ruleIndex: number, updated: RuleData) {
     setTabs((prev) =>
       prev.map((tab, i) => {
         if (i !== activeTabIndex) return tab;
         return {
           ...tab,
-          customReqs: [
-            ...tab.customReqs,
-            {
-              certificate_type_id: tab.certTypeId,
-              question_text: "",
-              question_type: "yes_no",
-              effect: "blocks_admission",
-              negative_message: "",
-              positive_message: "",
-              sort_order: tab.customReqs.length,
-              show_in_comparison: false,
-              comparison_input_type: null,
-              comparison_key: "",
-            },
-          ],
+          rules: tab.rules.map((r, j) => (j === ruleIndex ? updated : r)),
         };
       })
     );
   }
 
-  function removeCustomReq(index: number) {
+  function removeRule(ruleIndex: number) {
     setTabs((prev) =>
       prev.map((tab, i) => {
         if (i !== activeTabIndex) return tab;
-        return { ...tab, customReqs: tab.customReqs.filter((_, j) => j !== index) };
-      })
-    );
-  }
-
-  function updateCustomReq(index: number, field: string, value: unknown) {
-    setTabs((prev) =>
-      prev.map((tab, i) => {
-        if (i !== activeTabIndex) return tab;
-        return {
-          ...tab,
-          customReqs: tab.customReqs.map((cr, j) => {
-            if (j !== index) return cr;
-            const updated = { ...cr, [field]: value };
-            if (field === "question_type" && value === "yes_no") {
-              updated.options = undefined;
-              updated.option_effects = null;
-            }
-            return updated;
-          }),
-        };
-      })
-    );
-  }
-
-  function addOption(crIndex: number) {
-    setTabs((prev) =>
-      prev.map((tab, i) => {
-        if (i !== activeTabIndex) return tab;
-        return {
-          ...tab,
-          customReqs: tab.customReqs.map((cr, j) => {
-            if (j !== crIndex) return cr;
-            return { ...cr, options: [...(cr.options || []), ""] };
-          }),
-        };
-      })
-    );
-  }
-
-  function updateOption(crIndex: number, optIndex: number, value: string) {
-    setTabs((prev) =>
-      prev.map((tab, i) => {
-        if (i !== activeTabIndex) return tab;
-        return {
-          ...tab,
-          customReqs: tab.customReqs.map((cr, j) => {
-            if (j !== crIndex) return cr;
-            const opts = [...(cr.options || [])];
-            const oldLabel = opts[optIndex];
-            opts[optIndex] = value;
-            if (cr.option_effects && oldLabel && oldLabel in cr.option_effects) {
-              const oe = { ...cr.option_effects };
-              oe[value] = oe[oldLabel];
-              delete oe[oldLabel];
-              return { ...cr, options: opts, option_effects: oe };
-            }
-            return { ...cr, options: opts };
-          }),
-        };
-      })
-    );
-  }
-
-  function removeOption(crIndex: number, optIndex: number) {
-    setTabs((prev) =>
-      prev.map((tab, i) => {
-        if (i !== activeTabIndex) return tab;
-        return {
-          ...tab,
-          customReqs: tab.customReqs.map((cr, j) => {
-            if (j !== crIndex) return cr;
-            const opts = [...(cr.options || [])];
-            const removed = opts[optIndex];
-            opts.splice(optIndex, 1);
-            let oe = cr.option_effects ? { ...cr.option_effects } : null;
-            if (oe && removed && removed in oe) {
-              delete oe[removed];
-              if (Object.keys(oe).length === 0) oe = null;
-            }
-            return { ...cr, options: opts.length > 0 ? opts : undefined, option_effects: oe };
-          }),
-        };
-      })
-    );
-  }
-
-  function updateOptionEffect(crIndex: number, optionLabel: string, field: "effect" | "message", value: string) {
-    setTabs((prev) =>
-      prev.map((tab, i) => {
-        if (i !== activeTabIndex) return tab;
-        return {
-          ...tab,
-          customReqs: tab.customReqs.map((cr, j) => {
-            if (j !== crIndex) return cr;
-            const oe = { ...(cr.option_effects || {}) };
-            const current = oe[optionLabel] || { effect: "none" as const, message: null };
-            if (field === "effect") {
-              oe[optionLabel] = { ...current, effect: value as OptionEffect["effect"], message: value === "none" ? null : current.message };
-            } else {
-              oe[optionLabel] = { ...current, message: value || null };
-            }
-            return { ...cr, option_effects: oe };
-          }),
-        };
-      })
-    );
-  }
-
-  /* ---------------------------------------------------------------- */
-  /*  Language certificate helpers                                      */
-  /* ---------------------------------------------------------------- */
-
-  function addLanguageCert() {
-    setTabs((prev) =>
-      prev.map((tab, i) => {
-        if (i !== activeTabIndex) return tab;
-        const current = tab.reqs.accepted_language_certs || [];
-        return {
-          ...tab,
-          reqs: {
-            ...tab.reqs,
-            accepted_language_certs: [...current, { type: "IELTS", min_score: 0 }],
-          },
-        };
-      })
-    );
-  }
-
-  function removeLanguageCert(certIndex: number) {
-    setTabs((prev) =>
-      prev.map((tab, i) => {
-        if (i !== activeTabIndex) return tab;
-        const current = tab.reqs.accepted_language_certs || [];
-        const updated = current.filter((_, j) => j !== certIndex);
-        return {
-          ...tab,
-          reqs: {
-            ...tab.reqs,
-            accepted_language_certs: updated.length > 0 ? updated : null,
-          },
-        };
-      })
-    );
-  }
-
-  function updateLanguageCert(certIndex: number, field: "type" | "min_score", value: string | number) {
-    setTabs((prev) =>
-      prev.map((tab, i) => {
-        if (i !== activeTabIndex) return tab;
-        const current = [...(tab.reqs.accepted_language_certs || [])];
-        current[certIndex] = { ...current[certIndex], [field]: value };
-        return {
-          ...tab,
-          reqs: { ...tab.reqs, accepted_language_certs: current },
-        };
+        return { ...tab, rules: tab.rules.filter((_, j) => j !== ruleIndex) };
       })
     );
   }
@@ -691,13 +348,35 @@ export default function EditProgramPage({
     if (!ct) return;
 
     if (isUniversal && tabs.length === 1 && tabs[0].certTypeId === null) {
-      // Converting from universal mode → first cert-specific tab
-      // COPY universal requirements into the new cert tab
+      // Converting from universal → first cert-specific tab
+      // Copy existing universal rules into the new cert tab
       const universalTab = tabs[0];
 
-      // Call API to convert the universal row's certificate_type_id
+      // Save universal rules to the new cert type via API
+      setSaving(true);
+      await fetch(`/api/rules/${programId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          certificate_type_id: certTypeId,
+          rules: universalTab.rules,
+          req_row_id: universalTab.reqRowId,
+        }),
+      });
+
+      // Delete old universal rules
+      await fetch(`/api/rules/${programId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          certificate_type_id: null,
+          rules: [],
+          req_row_id: null,
+        }),
+      });
+
+      // Also convert the old requirements row cert type
       if (universalTab.reqRowId) {
-        setSaving(true);
         await fetch(`/api/programs/${programId}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
@@ -709,31 +388,26 @@ export default function EditProgramPage({
             },
           }),
         });
-        setSaving(false);
       }
 
-      // Reload data from DB to ensure state is fully consistent
-      // (API handler already migrates custom_requirements + legacy IELTS → language_cert)
+      setSaving(false);
       setShowCertTypePicker(false);
       setToast(`تم نسخ الشروط العامة إلى تبويب ${ct.name_ar}`);
       setTimeout(() => setToast(""), 3000);
       await loadData();
-      // Find and activate the newly converted tab
       setTabs((prev) => {
         const idx = prev.findIndex((tab) => tab.certTypeId === certTypeId);
         if (idx >= 0) setActiveTabIndex(idx);
         return prev;
       });
     } else {
-      // Already in multi-cert mode — add new tab with empty defaults
-      const newTab: CertTypeTab = {
+      // Already in multi-cert mode — add new empty tab
+      const newTab: RuleTab = {
         certTypeId: ct.id,
         certTypeName: ct.name_ar,
         reqRowId: null,
-        reqs: { ...defaultReqs },
-        customReqs: [],
+        rules: [],
       };
-
       setTabs((prev) => [...prev, newTab]);
       setActiveTabIndex(tabs.length);
       setShowCertTypePicker(false);
@@ -742,7 +416,6 @@ export default function EditProgramPage({
 
   async function handleRemoveCertType(tabIndex: number) {
     const tab = tabs[tabIndex];
-
     if (!confirm(t("admin.confirmRemoveCertType"))) return;
 
     if (tabs.length <= 1) {
@@ -763,16 +436,11 @@ export default function EditProgramPage({
         setSaving(false);
       }
 
-      // Convert tab to universal
       setTabs([{
         certTypeId: null,
         certTypeName: t("admin.universalRequirements"),
         reqRowId: tab.reqRowId,
-        reqs: { ...tab.reqs },
-        customReqs: tab.customReqs.map((cr) => ({
-          ...cr,
-          certificate_type_id: null,
-        })),
+        rules: tab.rules,
       }]);
       setActiveTabIndex(0);
       setIsUniversal(true);
@@ -781,16 +449,27 @@ export default function EditProgramPage({
       return;
     }
 
-    // Removing one of multiple tabs — delete the row from DB
+    // Removing one of multiple tabs — delete rules from DB
+    setSaving(true);
+    await fetch(`/api/rules/${programId}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        certificate_type_id: tab.certTypeId,
+        rules: [],
+        req_row_id: tab.reqRowId,
+      }),
+    });
+
+    // Also delete the old requirements row
     if (tab.reqRowId) {
-      setSaving(true);
       await fetch(`/api/programs/${programId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ delete_requirement_row_id: tab.reqRowId }),
       });
-      setSaving(false);
     }
+    setSaving(false);
 
     setTabs((prev) => prev.filter((_, i) => i !== tabIndex));
     setActiveTabIndex((prev) => Math.min(prev, tabs.length - 2));
@@ -915,32 +594,30 @@ export default function EditProgramPage({
     setError("");
     setSaved(false);
 
-    // Compute complexity from ALL tabs
-    let computedComplexity = "simple";
-    if (originalComplexity === "complex") {
-      computedComplexity = "complex";
-    } else if (tabs.some((tab) => tab.customReqs.length > 0)) {
-      computedComplexity = "hybrid";
-    }
-
-    const res = await fetch(`/api/programs/${programId}`, {
+    // Update program info
+    await fetch(`/api/programs/${programId}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         program: {
           name: programName,
           category,
-          complexity_level: computedComplexity,
           is_active: isActive,
         },
+      }),
+    });
+
+    // Save rules for the active tab via rules API (includes dual-write)
+    const res = await fetch(`/api/rules/${programId}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
         certificate_type_id: activeTab.certTypeId,
-        req_row_id: activeTab.reqRowId,
-        requirements: activeTab.reqs,
-        custom_requirements: activeTab.customReqs.map((cr, i) => ({
-          ...cr,
-          certificate_type_id: activeTab.certTypeId,
-          sort_order: i + 1,
+        rules: activeTab.rules.map((r, i) => ({
+          ...r,
+          sort_order: i,
         })),
+        req_row_id: activeTab.reqRowId,
       }),
     });
 
@@ -951,7 +628,7 @@ export default function EditProgramPage({
       return;
     }
 
-    // If a new requirements row was created, update the tab's reqRowId
+    // Update reqRowId if a new one was created
     const data = await res.json();
     if (data.req_row_id) {
       setTabs((prev) =>
@@ -1216,442 +893,34 @@ export default function EditProgramPage({
           </div>
         )}
 
-        {/* ============ Requirements (active tab) ============ */}
-        <section className="rounded-xl border border-white/10 bg-white/5 p-6 space-y-4">
-          <h2 className="text-lg font-semibold text-white">{t("admin.requirements")}</h2>
-
-          <div className="space-y-3">
-            {/* --- HS / 12 years --- */}
-            {visibleFields.has("hs_12years") && (
-              <>
-                <Toggle label={t("admin.requiresHS")} checked={reqs.requires_hs} onChange={(v) => updateReq("requires_hs", v)} />
-                <Toggle label={t("admin.requires12Years")} checked={reqs.requires_12_years} onChange={(v) => updateReq("requires_12_years", v)} />
-              </>
-            )}
-
-            {/* --- Bachelor --- */}
-            {visibleFields.has("bachelor") && (
-              <Toggle label={t("admin.requiresBachelor")} checked={reqs.requires_bachelor} onChange={(v) => updateReq("requires_bachelor", v)} />
-            )}
-
-            {/* --- GPA --- */}
-            {visibleFields.has("gpa") && (
-              <>
-                <Toggle label={t("admin.requiresGPA")} checked={reqs.requires_gpa} onChange={(v) => updateReq("requires_gpa", v)} />
-                {reqs.requires_gpa && (
-                  <div className="mr-8">
-                    <label className="block text-xs text-slate-400 mb-1">{t("admin.gpaMin")}</label>
-                    <input type="number" step="0.01" value={reqs.gpa_min ?? ""} onChange={(e) => updateReq("gpa_min", e.target.value ? Number(e.target.value) : null)} className="w-40 rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white focus:border-blue-500 focus:outline-none" />
-                  </div>
-                )}
-              </>
-            )}
-
-            {/* --- Language Certificate (multi-cert) --- */}
-            {visibleFields.has("language_cert") && (
-              <div className="border-t border-white/10 pt-3 mt-3">
-                <p className="text-xs font-medium text-slate-400 mb-2">{t("admin.languageCertRequirements")}</p>
-                <Toggle label={t("admin.requiresLanguageCert")} checked={reqs.requires_language_cert} onChange={(v) => updateReq("requires_language_cert", v)} />
-                {reqs.requires_language_cert && (
-                  <div className="mr-8 mt-2 space-y-3">
-                    <div>
-                      <label className="block text-xs text-slate-400 mb-1">{t("admin.languageCertEffect")}</label>
-                      <select value={reqs.language_cert_effect || "blocks_if_below"} onChange={(e) => updateReq("language_cert_effect", e.target.value)} className="w-64 rounded-lg border border-white/10 bg-[#0f1c2e] px-3 py-2 text-sm text-white focus:border-blue-500 focus:outline-none">
-                        <option value="blocks_if_below" className="bg-[#0f1c2e] text-white">{t("admin.blocksIfBelow")}</option>
-                        <option value="conditional" className="bg-[#0f1c2e] text-white">{t("admin.conditional")}</option>
-                        <option value="interview" className="bg-[#0f1c2e] text-white">{t("admin.interviewEffect")}</option>
-                      </select>
-                    </div>
-
-                    <div className="space-y-2">
-                      <div className="flex items-center justify-between">
-                        <label className="text-xs font-medium text-slate-400">{t("admin.acceptedLanguageCerts")}</label>
-                        <button type="button" onClick={addLanguageCert} className="text-xs text-blue-400 hover:text-blue-300">
-                          + {t("admin.addLanguageCert")}
-                        </button>
-                      </div>
-                      {(reqs.accepted_language_certs || []).map((cert, cIdx) => (
-                        <div key={cIdx} className="flex items-center gap-2">
-                          <select
-                            value={cert.type}
-                            onChange={(e) => updateLanguageCert(cIdx, "type", e.target.value)}
-                            className="w-40 rounded-lg border border-white/10 bg-[#0f1c2e] px-3 py-1.5 text-sm text-white focus:border-blue-500 focus:outline-none"
-                          >
-                            {LANGUAGE_CERT_TYPES.map((t) => (
-                              <option key={t} value={t} className="bg-[#0f1c2e] text-white">{t}</option>
-                            ))}
-                          </select>
-                          <input
-                            type="number"
-                            step="0.5"
-                            value={cert.min_score || ""}
-                            onChange={(e) => updateLanguageCert(cIdx, "min_score", e.target.value ? Number(e.target.value) : 0)}
-                            placeholder={t("admin.minScore")}
-                            className="w-24 rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-sm text-white focus:border-blue-500 focus:outline-none"
-                          />
-                          <button type="button" onClick={() => removeLanguageCert(cIdx)} className="text-xs text-red-400 hover:text-red-300">
-                            {t("admin.removeOption")}
-                          </button>
-                        </div>
-                      ))}
-                      {(!reqs.accepted_language_certs || reqs.accepted_language_certs.length === 0) && (
-                        <p className="text-xs text-slate-500">—</p>
-                      )}
-                    </div>
-
-                    {/* Legacy IELTS fields — show if they have data */}
-                    {reqs.requires_ielts && (
-                      <div className="rounded-lg border border-yellow-500/20 bg-yellow-500/5 p-3">
-                        <p className="text-xs text-yellow-400 mb-2">{t("admin.legacyIeltsNote")}</p>
-                        <div className="grid gap-4 sm:grid-cols-2">
-                          <div>
-                            <label className="block text-xs text-slate-400 mb-1">{t("admin.ieltsMin")}</label>
-                            <input type="number" step="0.5" value={reqs.ielts_min ?? ""} onChange={(e) => updateReq("ielts_min", e.target.value ? Number(e.target.value) : null)} className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white focus:border-blue-500 focus:outline-none" />
-                          </div>
-                          <div>
-                            <label className="block text-xs text-slate-400 mb-1">{t("admin.ieltsEffect")}</label>
-                            <select value={reqs.ielts_effect || ""} onChange={(e) => updateReq("ielts_effect", e.target.value || null)} className="w-full rounded-lg border border-white/10 bg-[#0f1c2e] px-3 py-2 text-sm text-white focus:border-blue-500 focus:outline-none">
-                              <option value="" className="bg-[#0f1c2e] text-white">—</option>
-                              <option value="blocks_if_below" className="bg-[#0f1c2e] text-white">{t("admin.blocksIfBelow")}</option>
-                              <option value="conditional" className="bg-[#0f1c2e] text-white">{t("admin.conditional")}</option>
-                            </select>
-                          </div>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                )}
-                {/* Legacy IELTS — shown only when language cert is OFF and old IELTS data exists */}
-                {!reqs.requires_language_cert && reqs.requires_ielts && (
-                  <div className="rounded-lg border border-yellow-500/20 bg-yellow-500/5 p-3 mt-2">
-                    <p className="text-xs text-yellow-400 mb-2">{t("admin.legacyIeltsNote")}</p>
-                    <div className="grid gap-4 sm:grid-cols-2">
-                      <div>
-                        <label className="block text-xs text-slate-400 mb-1">{t("admin.ieltsMin")}</label>
-                        <input type="number" step="0.5" value={reqs.ielts_min ?? ""} onChange={(e) => updateReq("ielts_min", e.target.value ? Number(e.target.value) : null)} className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white focus:border-blue-500 focus:outline-none" />
-                      </div>
-                      <div>
-                        <label className="block text-xs text-slate-400 mb-1">{t("admin.ieltsEffect")}</label>
-                        <select value={reqs.ielts_effect || ""} onChange={(e) => updateReq("ielts_effect", e.target.value || null)} className="w-full rounded-lg border border-white/10 bg-[#0f1c2e] px-3 py-2 text-sm text-white focus:border-blue-500 focus:outline-none">
-                          <option value="" className="bg-[#0f1c2e] text-white">—</option>
-                          <option value="blocks_if_below" className="bg-[#0f1c2e] text-white">{t("admin.blocksIfBelow")}</option>
-                          <option value="conditional" className="bg-[#0f1c2e] text-white">{t("admin.conditional")}</option>
-                        </select>
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* --- SAT --- */}
-            {visibleFields.has("sat") && (
-              <>
-                <Toggle label={t("admin.requiresSAT")} checked={reqs.requires_sat} onChange={(v) => updateReq("requires_sat", v)} />
-                {reqs.requires_sat && (
-                  <div className="mr-8 grid gap-4 sm:grid-cols-2">
-                    <div>
-                      <label className="block text-xs text-slate-400 mb-1">{t("admin.satMin")}</label>
-                      <input type="number" value={reqs.sat_min ?? ""} onChange={(e) => updateReq("sat_min", e.target.value ? Number(e.target.value) : null)} className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white focus:border-blue-500 focus:outline-none" />
-                    </div>
-                    <div>
-                      <label className="block text-xs text-slate-400 mb-1">{t("admin.satEffect")}</label>
-                      <select value={reqs.sat_effect || ""} onChange={(e) => updateReq("sat_effect", e.target.value || null)} className="w-full rounded-lg border border-white/10 bg-[#0f1c2e] px-3 py-2 text-sm text-white focus:border-blue-500 focus:outline-none">
-                        <option value="" className="bg-[#0f1c2e] text-white">—</option>
-                        <option value="blocks_if_below" className="bg-[#0f1c2e] text-white">{t("admin.blocksIfBelow")}</option>
-                        <option value="conditional" className="bg-[#0f1c2e] text-white">{t("admin.conditional")}</option>
-                      </select>
-                    </div>
-                  </div>
-                )}
-              </>
-            )}
-
-            {/* --- Entrance exam / Portfolio / Research plan --- */}
-            {visibleFields.has("entrance_exam") && (
-              <Toggle label={t("admin.requiresEntranceExam")} checked={reqs.requires_entrance_exam} onChange={(v) => updateReq("requires_entrance_exam", v)} />
-            )}
-            {visibleFields.has("portfolio") && (
-              <Toggle label={t("admin.requiresPortfolio")} checked={reqs.requires_portfolio} onChange={(v) => updateReq("requires_portfolio", v)} />
-            )}
-            {visibleFields.has("research_plan") && (
-              <Toggle label={t("admin.requiresResearchPlan")} checked={reqs.requires_research_plan} onChange={(v) => updateReq("requires_research_plan", v)} />
-            )}
-
-            {/* --- A Level (British certificates) --- */}
-            {visibleFields.has("a_levels") && (
-              <div className="border-t border-white/10 pt-3 mt-3">
-                <p className="text-xs font-medium text-slate-400 mb-2">{t("admin.britishRequirements")}</p>
-                <Toggle label={t("admin.requiresALevels")} checked={reqs.requires_a_levels} onChange={(v) => updateReq("requires_a_levels", v)} />
-                {reqs.requires_a_levels && (
-                  <div className="mr-8 mt-2 space-y-3">
-                    <div className="grid gap-4 sm:grid-cols-3">
-                      <div>
-                        <label className="block text-xs text-slate-400 mb-1">{t("admin.aLevelSubjectsMin")}</label>
-                        <input type="number" min="1" max="10" value={reqs.a_level_subjects_min ?? ""} onChange={(e) => updateReq("a_level_subjects_min", e.target.value ? Number(e.target.value) : null)} className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white focus:border-blue-500 focus:outline-none" />
-                      </div>
-                      <div>
-                        <label className="block text-xs text-slate-400 mb-1">{t("admin.aLevelMinGrade")}</label>
-                        <select value={reqs.a_level_min_grade || ""} onChange={(e) => updateReq("a_level_min_grade", e.target.value || null)} className="w-full rounded-lg border border-white/10 bg-[#0f1c2e] px-3 py-2 text-sm text-white focus:border-blue-500 focus:outline-none">
-                          <option value="" className="bg-[#0f1c2e] text-white">—</option>
-                          {["A*", "A", "B", "C", "D", "E"].map((g) => (
-                            <option key={g} value={g} className="bg-[#0f1c2e] text-white">{g}</option>
-                          ))}
-                        </select>
-                      </div>
-                      <div>
-                        <label className="block text-xs text-slate-400 mb-1">{t("admin.aLevelEffect")}</label>
-                        <select value={reqs.a_level_effect || "blocks_admission"} onChange={(e) => updateReq("a_level_effect", e.target.value)} className="w-full rounded-lg border border-white/10 bg-[#0f1c2e] px-3 py-2 text-sm text-white focus:border-blue-500 focus:outline-none">
-                          <option value="blocks_admission" className="bg-[#0f1c2e] text-white">{t("admin.blocks")}</option>
-                          <option value="makes_conditional" className="bg-[#0f1c2e] text-white">{t("admin.conditional")}</option>
-                        </select>
-                      </div>
-                    </div>
-                    <Toggle label={t("admin.aLevelRequiresCore")} checked={reqs.a_level_requires_core} onChange={(v) => updateReq("a_level_requires_core", v)} />
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* --- AS Level (British certificates) --- */}
-            {visibleFields.has("as_levels") && (
-              <div className="border-t border-white/10 pt-3 mt-3">
-                <Toggle label={t("admin.requiresASLevels")} checked={reqs.requires_as_levels} onChange={(v) => updateReq("requires_as_levels", v)} />
-                {reqs.requires_as_levels && (
-                  <div className="mr-8 mt-2 space-y-3">
-                    <div className="grid gap-4 sm:grid-cols-3">
-                      <div>
-                        <label className="block text-xs text-slate-400 mb-1">{t("admin.asLevelSubjectsMin")}</label>
-                        <input type="number" min="1" max="10" value={reqs.as_level_subjects_min ?? ""} onChange={(e) => updateReq("as_level_subjects_min", e.target.value ? Number(e.target.value) : null)} className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white focus:border-blue-500 focus:outline-none" />
-                      </div>
-                      <div>
-                        <label className="block text-xs text-slate-400 mb-1">{t("admin.asLevelMinGrade")}</label>
-                        <select value={reqs.as_level_min_grade || ""} onChange={(e) => updateReq("as_level_min_grade", e.target.value || null)} className="w-full rounded-lg border border-white/10 bg-[#0f1c2e] px-3 py-2 text-sm text-white focus:border-blue-500 focus:outline-none">
-                          <option value="" className="bg-[#0f1c2e] text-white">—</option>
-                          {["A", "B", "C", "D", "E"].map((g) => (
-                            <option key={g} value={g} className="bg-[#0f1c2e] text-white">{g}</option>
-                          ))}
-                        </select>
-                      </div>
-                      <div>
-                        <label className="block text-xs text-slate-400 mb-1">{t("admin.asLevelEffect")}</label>
-                        <select value={reqs.as_level_effect || "blocks_admission"} onChange={(e) => updateReq("as_level_effect", e.target.value)} className="w-full rounded-lg border border-white/10 bg-[#0f1c2e] px-3 py-2 text-sm text-white focus:border-blue-500 focus:outline-none">
-                          <option value="blocks_admission" className="bg-[#0f1c2e] text-white">{t("admin.blocks")}</option>
-                          <option value="makes_conditional" className="bg-[#0f1c2e] text-white">{t("admin.conditional")}</option>
-                        </select>
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* --- O Level / GCSE (British certificates) --- */}
-            {visibleFields.has("o_levels") && (
-              <div className="border-t border-white/10 pt-3 mt-3">
-                <Toggle label={t("admin.requiresOLevels")} checked={reqs.requires_o_levels} onChange={(v) => updateReq("requires_o_levels", v)} />
-                {reqs.requires_o_levels && (
-                  <div className="mr-8 mt-2 space-y-3">
-                    <div className="grid gap-4 sm:grid-cols-3">
-                      <div>
-                        <label className="block text-xs text-slate-400 mb-1">{t("admin.oLevelSubjectsMin")}</label>
-                        <input type="number" min="1" max="10" value={reqs.o_level_subjects_min ?? ""} onChange={(e) => updateReq("o_level_subjects_min", e.target.value ? Number(e.target.value) : null)} className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white focus:border-blue-500 focus:outline-none" />
-                      </div>
-                      <div>
-                        <label className="block text-xs text-slate-400 mb-1">{t("admin.oLevelMinGrade")}</label>
-                        <select value={reqs.o_level_min_grade || ""} onChange={(e) => updateReq("o_level_min_grade", e.target.value || null)} className="w-full rounded-lg border border-white/10 bg-[#0f1c2e] px-3 py-2 text-sm text-white focus:border-blue-500 focus:outline-none">
-                          <option value="" className="bg-[#0f1c2e] text-white">—</option>
-                          {["A*", "A", "B", "C", "D", "E", "F", "G"].map((g) => (
-                            <option key={g} value={g} className="bg-[#0f1c2e] text-white">{g}</option>
-                          ))}
-                        </select>
-                      </div>
-                      <div>
-                        <label className="block text-xs text-slate-400 mb-1">{t("admin.oLevelEffect")}</label>
-                        <select value={reqs.o_level_effect || "blocks_admission"} onChange={(e) => updateReq("o_level_effect", e.target.value)} className="w-full rounded-lg border border-white/10 bg-[#0f1c2e] px-3 py-2 text-sm text-white focus:border-blue-500 focus:outline-none">
-                          <option value="blocks_admission" className="bg-[#0f1c2e] text-white">{t("admin.blocks")}</option>
-                          <option value="makes_conditional" className="bg-[#0f1c2e] text-white">{t("admin.conditional")}</option>
-                        </select>
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* --- IB (International Baccalaureate) --- */}
-            {visibleFields.has("ib") && (
-              <div className="border-t border-white/10 pt-3 mt-3">
-                <p className="text-xs font-medium text-slate-400 mb-2">{t("admin.ibRequirements")}</p>
-                <Toggle label={t("admin.requiresIB")} checked={reqs.requires_ib} onChange={(v) => updateReq("requires_ib", v)} />
-                {reqs.requires_ib && (
-                  <div className="mr-8 mt-2 grid gap-4 sm:grid-cols-2">
-                    <div>
-                      <label className="block text-xs text-slate-400 mb-1">{t("admin.ibMinPoints")}</label>
-                      <input type="number" min="0" max="45" value={reqs.ib_min_points ?? ""} onChange={(e) => updateReq("ib_min_points", e.target.value ? Number(e.target.value) : null)} className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white focus:border-blue-500 focus:outline-none" />
-                    </div>
-                    <div>
-                      <label className="block text-xs text-slate-400 mb-1">{t("admin.ibEffect")}</label>
-                      <select value={reqs.ib_effect || "blocks_admission"} onChange={(e) => updateReq("ib_effect", e.target.value)} className="w-full rounded-lg border border-white/10 bg-[#0f1c2e] px-3 py-2 text-sm text-white focus:border-blue-500 focus:outline-none">
-                        <option value="blocks_admission" className="bg-[#0f1c2e] text-white">{t("admin.blocks")}</option>
-                        <option value="makes_conditional" className="bg-[#0f1c2e] text-white">{t("admin.conditional")}</option>
-                      </select>
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-slate-300 mb-2">{t("admin.resultNotes")}</label>
-            <textarea value={reqs.result_notes || ""} onChange={(e) => updateReq("result_notes", e.target.value || null)} rows={3} className="w-full rounded-lg border border-white/10 bg-white/5 px-4 py-2.5 text-white focus:border-blue-500 focus:outline-none" />
-          </div>
-        </section>
-
-        {/* ============ Custom Requirements (active tab) ============ */}
+        {/* ============ Requirements Rules (active tab) ============ */}
         <section className="rounded-xl border border-white/10 bg-white/5 p-6 space-y-4">
           <div className="flex items-center justify-between">
-            <h2 className="text-lg font-semibold text-white">{t("admin.customRequirements")}</h2>
-            <button type="button" onClick={addCustomReq} className="rounded-lg bg-white/10 px-4 py-2 text-sm text-white transition hover:bg-white/20">
-              {t("admin.addCustomRequirement")}
-            </button>
+            <h2 className="text-lg font-semibold text-white">{t("admin.requirements")}</h2>
+            <AddRuleMenu
+              certSlug={activeCertSlug}
+              existingRuleTypes={rules.map((r) => r.rule_type)}
+              onAdd={addRule}
+            />
           </div>
 
-          {customReqs.map((cr, index) => (
-            <div key={cr.id || `new-${index}`} className="rounded-lg border border-white/5 bg-white/[0.02] p-4 space-y-3">
-              <div className="flex items-start justify-between gap-4">
-                <div className="flex-1">
-                  <label className="block text-xs text-slate-400 mb-1">{t("admin.questionText")}</label>
-                  <input type="text" value={cr.question_text} onChange={(e) => updateCustomReq(index, "question_text", e.target.value)} className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white focus:border-blue-500 focus:outline-none" />
-                </div>
-                <button type="button" onClick={() => removeCustomReq(index)} className="mt-5 text-sm text-red-400 hover:text-red-300">
-                  {t("admin.removeCustomRequirement")}
-                </button>
+          <div className="space-y-3">
+            {rules.map((rule, index) => (
+              <RuleCard
+                key={rule.id || `new-${index}-${rule.rule_type}`}
+                rule={rule}
+                onChange={(updated) => updateRule(index, updated)}
+                onRemove={() => removeRule(index)}
+              />
+            ))}
+
+            {rules.length === 0 && (
+              <div className="text-center py-8">
+                <p className="text-sm text-slate-500 mb-2">لا توجد شروط بعد</p>
+                <p className="text-xs text-slate-600">اضغط &quot;+ إضافة شرط&quot; لإضافة شروط القبول</p>
               </div>
-
-              <div className="grid gap-3 sm:grid-cols-2">
-                <div>
-                  <label className="block text-xs text-slate-400 mb-1">{t("admin.questionType")}</label>
-                  <select value={cr.question_type} onChange={(e) => updateCustomReq(index, "question_type", e.target.value)} className="w-full rounded-lg border border-white/10 bg-[#0f1c2e] px-3 py-2 text-sm text-white focus:border-blue-500 focus:outline-none">
-                    <option value="yes_no" className="bg-[#0f1c2e] text-white">نعم / لا</option>
-                    <option value="select" className="bg-[#0f1c2e] text-white">اختيار</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-xs text-slate-400 mb-1">{t("admin.effect")}</label>
-                  <select value={cr.effect} onChange={(e) => updateCustomReq(index, "effect", e.target.value)} className="w-full rounded-lg border border-white/10 bg-[#0f1c2e] px-3 py-2 text-sm text-white focus:border-blue-500 focus:outline-none">
-                    <option value="blocks_admission" className="bg-[#0f1c2e] text-white">{t("admin.blocks")}</option>
-                    <option value="makes_conditional" className="bg-[#0f1c2e] text-white">{t("admin.conditional")}</option>
-                  </select>
-                </div>
-              </div>
-
-              <div className="grid gap-3 sm:grid-cols-2">
-                <div>
-                  <label className="block text-xs text-slate-400 mb-1">{t("admin.negativeMessage")}</label>
-                  <input type="text" value={cr.negative_message} onChange={(e) => updateCustomReq(index, "negative_message", e.target.value)} className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white focus:border-blue-500 focus:outline-none" />
-                </div>
-                <div>
-                  <label className="block text-xs text-slate-400 mb-1">{t("admin.positiveMessage")}</label>
-                  <input type="text" value={cr.positive_message} onChange={(e) => updateCustomReq(index, "positive_message", e.target.value)} className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white focus:border-blue-500 focus:outline-none" />
-                </div>
-              </div>
-
-              {/* Options for select type */}
-              {cr.question_type === "select" && (
-                <div className="border-t border-white/5 pt-3 space-y-2">
-                  <div className="flex items-center justify-between">
-                    <label className="text-xs font-medium text-slate-400">{t("admin.options")}</label>
-                    <button type="button" onClick={() => addOption(index)} className="text-xs text-blue-400 hover:text-blue-300">
-                      + {t("admin.addOption")}
-                    </button>
-                  </div>
-                  {(cr.options || []).map((opt, optIdx) => (
-                    <div key={optIdx} className="flex items-center gap-2">
-                      <input type="text" value={opt} onChange={(e) => updateOption(index, optIdx, e.target.value)} placeholder={`خيار ${optIdx + 1}`} className="flex-1 rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-sm text-white focus:border-blue-500 focus:outline-none" />
-                      <button type="button" onClick={() => removeOption(index, optIdx)} className="text-xs text-red-400 hover:text-red-300">
-                        {t("admin.removeOption")}
-                      </button>
-                    </div>
-                  ))}
-
-                  {/* Option Effects */}
-                  {cr.options && cr.options.length > 0 && cr.options.some((o) => o) && (
-                    <div className="mt-3 rounded-lg border border-white/5 bg-white/[0.02] p-3 space-y-2">
-                      <label className="text-xs font-medium text-slate-400">{t("admin.optionEffects")}</label>
-                      {cr.options.map((opt) => {
-                        if (!opt) return null;
-                        const oe = cr.option_effects?.[opt] || { effect: "none", message: null };
-                        return (
-                          <div key={opt} className="flex items-start gap-2">
-                            <span className="mt-1.5 min-w-[100px] text-xs text-slate-300 truncate">{opt}</span>
-                            <select
-                              value={oe.effect}
-                              onChange={(e) => updateOptionEffect(index, opt, "effect", e.target.value)}
-                              className="w-36 rounded-lg border border-white/10 bg-[#0f1c2e] px-2 py-1.5 text-xs text-white focus:border-blue-500 focus:outline-none"
-                            >
-                              <option value="none" className="bg-[#0f1c2e] text-white">{t("admin.effectNone")}</option>
-                              <option value="blocks_admission" className="bg-[#0f1c2e] text-white">{t("admin.effectBlocks")}</option>
-                              <option value="makes_conditional" className="bg-[#0f1c2e] text-white">{t("admin.effectConditional")}</option>
-                            </select>
-                            {oe.effect !== "none" && (
-                              <input
-                                type="text"
-                                value={oe.message || ""}
-                                onChange={(e) => updateOptionEffect(index, opt, "message", e.target.value)}
-                                placeholder={t("admin.effectMessage")}
-                                className="flex-1 rounded-lg border border-white/10 bg-white/5 px-2 py-1.5 text-xs text-white placeholder-slate-500 focus:border-blue-500 focus:outline-none"
-                              />
-                            )}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* Comparison settings */}
-              <div className="border-t border-white/5 pt-3 space-y-3">
-                <Toggle
-                  label={t("admin.showInComparison")}
-                  checked={cr.show_in_comparison}
-                  onChange={(v) => updateCustomReq(index, "show_in_comparison", v)}
-                />
-                {cr.show_in_comparison && (
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    <div>
-                      <label className="block text-xs text-slate-400 mb-1">{t("admin.comparisonInputType")}</label>
-                      <select
-                        value={cr.comparison_input_type || "toggle"}
-                        onChange={(e) => updateCustomReq(index, "comparison_input_type", e.target.value)}
-                        className="w-full rounded-lg border border-white/10 bg-[#0f1c2e] px-3 py-2 text-sm text-white focus:border-blue-500 focus:outline-none"
-                      >
-                        <option value="toggle" className="bg-[#0f1c2e] text-white">{t("admin.comparisonToggle")}</option>
-                        <option value="number" className="bg-[#0f1c2e] text-white">{t("admin.comparisonNumber")}</option>
-                        <option value="select" className="bg-[#0f1c2e] text-white">{t("admin.comparisonSelect")}</option>
-                      </select>
-                    </div>
-                    <div>
-                      <label className="block text-xs text-slate-400 mb-1">{t("admin.comparisonKey")}</label>
-                      <input
-                        type="text"
-                        value={cr.comparison_key}
-                        onChange={(e) => updateCustomReq(index, "comparison_key", e.target.value)}
-                        placeholder="e.g. has_duolingo_65"
-                        className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white placeholder-slate-500 focus:border-blue-500 focus:outline-none"
-                      />
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
-          ))}
-
-          {customReqs.length === 0 && (
-            <p className="text-sm text-slate-500">—</p>
-          )}
+            )}
+          </div>
         </section>
 
         {error && <p className="text-sm text-red-400">{error}</p>}
@@ -1811,14 +1080,14 @@ export default function EditProgramPage({
         )}
       </section>
 
-      {/* ============ Delete Confirmation Dialog ============ */}
-      {/* Toast notification */}
+      {/* ============ Toast ============ */}
       {toast && (
         <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 rounded-lg bg-blue-600 px-6 py-3 text-sm font-medium text-white shadow-lg">
           {toast}
         </div>
       )}
 
+      {/* ============ Delete Confirmation Dialog ============ */}
       {showDeleteConfirm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
           <div className="w-full max-w-md rounded-xl border border-white/10 bg-[#0f1c2e] p-6 shadow-xl">
@@ -1849,35 +1118,6 @@ export default function EditProgramPage({
           </div>
         </div>
       )}
-    </div>
-  );
-}
-
-/* ------------------------------------------------------------------ */
-/*  Toggle component                                                   */
-/* ------------------------------------------------------------------ */
-
-function Toggle({
-  label,
-  checked,
-  onChange,
-}: {
-  label: string;
-  checked: boolean;
-  onChange: (value: boolean) => void;
-}) {
-  return (
-    <div className="flex items-center gap-3">
-      <button
-        type="button"
-        onClick={() => onChange(!checked)}
-        className={`relative inline-flex h-6 w-11 items-center rounded-full transition ${checked ? "bg-blue-600" : "bg-slate-600"}`}
-      >
-        <span
-          className={`inline-block h-4 w-4 rounded-full bg-white transition ${checked ? "translate-x-1.5" : "translate-x-6"}`}
-        />
-      </button>
-      <span className="text-sm text-slate-300">{label}</span>
     </div>
   );
 }
