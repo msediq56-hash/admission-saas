@@ -163,6 +163,44 @@ tests/                    — test cases including V2 parity tests
 | admin | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ |
 | owner | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 
+## V3.2 Engine Architecture (in progress)
+
+A new parallel evaluation layer lives in `src/lib/rules/v3/`. The old system (`src/lib/rules/`, `evaluation-engine.ts`, `comparison-engine.ts`) stays fully operational and untouched.
+
+### Core concept
+Evaluators return **raw outcomes only** (`outcomeKey` + `facts`). The engine resolves outcomes into **decisions + actions** using `OutcomeDefinition` stored in the `requirement_rules.outcomes` JSONB column.
+
+### Profile type
+`AssessmentProfileV3` — a discriminated union by `certificateType`:
+- **british**: subjects array with level/grade, pathways config, intended major
+- **arabic**: hasHighSchool, has12Years, GPA, study track, intended major
+- **master**: hasBachelor, hasResearchPlan, language cert
+
+British qualifications use a **pathways config** (e.g. "3 A Levels at C+"). Core subjects are handled separately in `major_subject_requirements`.
+
+### Data states
+Profile fields use three-state values: `present` (with data), `not_provided`, `unknown`.
+
+### Decision precedence
+`block > redirect > review > conditional > pass`
+
+### Engine modes
+- **terminal**: stops on first block/redirect (used for evaluation wizard)
+- **diagnostic**: evaluates ALL rules (used for comparison)
+
+### Outcomes column
+`requirement_rules.outcomes` JSONB — maps `outcomeKey → OutcomeDefinition`. Empty `{}` means the rule has not been migrated to V3 yet; the V3 engine skips such rules.
+
+### Phase plan
+1. **Phase 1** — Types + Zod schemas (data contracts only)
+2. **Phase 2** — Engine + evaluators
+3. **Phase 3** — British certificate evaluator
+4. **Phase 4A** — Comparison UI migration
+5. **Phase 4B** — Evaluation UI migration
+6. **Phase 5** — Admin UI for outcomes
+7. **Phase 6** — Parity tests (V2 + old engine)
+8. **Phase 7** — Cleanup old engine
+
 ## Communication style
 
 The project owner is not a developer. When asking questions:
