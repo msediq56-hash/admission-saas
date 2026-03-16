@@ -549,7 +549,7 @@ test("diagnostic: redirect + block → finalDecision: block, redirect NOT popula
   assert.strictEqual(result.redirect, undefined);
 });
 
-test("terminal: redirect rule → stops, redirect IS populated", () => {
+test("terminal: redirect rule → stops, redirect IS populated with message", () => {
   const rule = makeRule({
     rule_type: "entrance_exam",
     config: {},
@@ -568,6 +568,58 @@ test("terminal: redirect rule → stops, redirect IS populated", () => {
   assert.strictEqual(result.finalDecision, "redirect");
   assert.ok(result.redirect);
   assert.strictEqual(result.redirect!.category, "foundation");
+  assert.strictEqual(result.redirect!.message, "جرّب التأسيسية");
+});
+
+test("redirect outcome message preserved → NOT empty string", () => {
+  const rule = makeRule({
+    rule_type: "entrance_exam",
+    config: {},
+    outcomes: {
+      required: {
+        decision: "redirect",
+        message: "يُنصح بالتقديم على برنامج تأسيسي",
+        redirect: { category: "foundation", scope: "same_university" },
+      },
+    },
+    sort_order: 1,
+  });
+  const result = evaluateRulesV3([rule], arabicProfile, {
+    mode: "diagnostic",
+  });
+  assert.strictEqual(result.finalDecision, "redirect");
+  assert.ok(result.redirect);
+  assert.strictEqual(result.redirect!.message, "يُنصح بالتقديم على برنامج تأسيسي");
+});
+
+test("redirect in terminal mode → stops AND redirect.message preserved", () => {
+  const redirectRule = makeRule({
+    rule_type: "entrance_exam",
+    config: {},
+    outcomes: {
+      required: {
+        decision: "redirect",
+        message: "يُنصح بالتقديم على برنامج تأسيسي",
+        redirect: { category: "foundation", scope: "any" },
+      },
+    },
+    sort_order: 1,
+  });
+  const passRule = makeRule({
+    rule_type: "portfolio",
+    config: {},
+    outcomes: { required: { decision: "pass" } },
+    sort_order: 2,
+  });
+  const result = evaluateRulesV3([redirectRule, passRule], arabicProfile, {
+    mode: "terminal",
+  });
+  assert.strictEqual(result.finalDecision, "redirect");
+  assert.strictEqual(result.trace.rulesStopped, true);
+  assert.strictEqual(result.ruleResults.length, 1);
+  assert.ok(result.redirect);
+  assert.strictEqual(result.redirect!.message, "يُنصح بالتقديم على برنامج تأسيسي");
+  assert.strictEqual(result.redirect!.scope, "any");
 });
 
 // ============================================================

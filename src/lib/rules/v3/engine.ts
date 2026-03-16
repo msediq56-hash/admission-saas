@@ -149,6 +149,7 @@ export function evaluateRulesV3(
   let highestDecision: Decision = "pass";
   let stopped = false;
   let stoppedAtRule: string | undefined;
+  let redirectCandidate: (RedirectTarget & { message: string }) | undefined;
 
   for (const rule of activeRules) {
     // Get evaluator from registry
@@ -189,6 +190,18 @@ export function evaluateRulesV3(
       result: resolved,
     });
 
+    // Capture redirect candidate directly from OutcomeDefinition
+    if (resolved.decision === "redirect") {
+      const redirectAction = resolved.actions.find(a => a.type === "redirect");
+      if (redirectAction && redirectAction.type === "redirect") {
+        const outcomeDef = rule.outcomes[rawResult.outcomeKey];
+        redirectCandidate = {
+          ...redirectAction.target,
+          message: outcomeDef.message || "",
+        };
+      }
+    }
+
     // Track highest-priority decision
     if (
       DECISION_PRIORITY[resolved.decision] <
@@ -227,33 +240,7 @@ export function evaluateRulesV3(
   }
 
   // Redirect: only set when finalDecision === "redirect"
-  let redirect: (RedirectTarget & { message: string }) | undefined;
-  if (highestDecision === "redirect") {
-    for (const rr of ruleResults) {
-      for (const action of rr.result.actions) {
-        if (action.type === "redirect") {
-          // Find the message from the corresponding rule result
-          const msg =
-            rr.result.actions.find(
-              (a): a is { type: "condition"; code: string; message: string } =>
-                a.type === "condition"
-            )?.message ??
-            rr.result.actions.find(
-              (a): a is { type: "note"; message: string } => a.type === "note"
-            )?.message;
-          // The redirect outcome MUST have a message (enforced in resolveOutcome)
-          // Find it from the OutcomeDefinition by looking at the redirect action's sibling actions
-          // or from the rule result itself
-          redirect = {
-            ...action.target,
-            message: msg || "",
-          };
-          break;
-        }
-      }
-      if (redirect) break;
-    }
-  }
+  const redirect = highestDecision === "redirect" ? redirectCandidate : undefined;
 
   // Collect review items
   const reviewItems: Array<{ reason: string }> = [];
