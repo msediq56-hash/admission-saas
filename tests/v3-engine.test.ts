@@ -622,6 +622,40 @@ test("redirect in terminal mode → stops AND redirect.message preserved", () =>
   assert.strictEqual(result.redirect!.scope, "any");
 });
 
+test("diagnostic: multiple redirects → first by sort_order wins", () => {
+  const firstRedirect = makeRule({
+    rule_type: "entrance_exam",
+    config: {},
+    outcomes: {
+      required: {
+        decision: "redirect",
+        message: "توجه للبرنامج التأسيسي",
+        redirect: { category: "foundation", scope: "same_university" },
+      },
+    },
+    sort_order: 1,
+  });
+  const secondRedirect = makeRule({
+    rule_type: "portfolio",
+    config: {},
+    outcomes: {
+      required: {
+        decision: "redirect",
+        message: "توجه للبكالوريوس",
+        redirect: { category: "bachelor", scope: "any" },
+      },
+    },
+    sort_order: 2,
+  });
+  const result = evaluateRulesV3([secondRedirect, firstRedirect], arabicProfile, {
+    mode: "diagnostic",
+  });
+  assert.strictEqual(result.finalDecision, "redirect");
+  assert.ok(result.redirect);
+  assert.strictEqual(result.redirect!.message, "توجه للبرنامج التأسيسي");
+  assert.strictEqual(result.redirect!.category, "foundation");
+});
+
 // ============================================================
 // Edge cases
 // ============================================================

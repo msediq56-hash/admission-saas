@@ -190,8 +190,8 @@ export function evaluateRulesV3(
       result: resolved,
     });
 
-    // Capture redirect candidate directly from OutcomeDefinition
-    if (resolved.decision === "redirect") {
+    // Capture redirect candidate directly from OutcomeDefinition (first by sort_order wins)
+    if (resolved.decision === "redirect" && !redirectCandidate) {
       const redirectAction = resolved.actions.find(a => a.type === "redirect");
       if (redirectAction && redirectAction.type === "redirect") {
         const outcomeDef = rule.outcomes[rawResult.outcomeKey];
