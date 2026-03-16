@@ -318,8 +318,24 @@ export default function EvaluatePage() {
       setQuestions(updatedQuestions);
     }
 
-    if (currentQuestionIndex < updatedQuestions.length - 1) {
-      setCurrentQuestionIndex(currentQuestionIndex + 1);
+    // Find next visible question (skip questions whose showIf condition is not met)
+    const answerMap = new Map(newAnswers.map((a) => [a.questionId, a.value]));
+    let nextIdx = currentQuestionIndex + 1;
+    while (nextIdx < updatedQuestions.length) {
+      const nextQ = updatedQuestions[nextIdx];
+      if (nextQ.showIf) {
+        const depAnswer = answerMap.get(nextQ.showIf.questionId);
+        if (depAnswer !== nextQ.showIf.value) {
+          // Skip this question — condition not met
+          nextIdx++;
+          continue;
+        }
+      }
+      break;
+    }
+
+    if (nextIdx < updatedQuestions.length) {
+      setCurrentQuestionIndex(nextIdx);
     } else {
       setBlockedAtQuestionIndex(null);
       const evalResult = evaluateRuleAnswers(
@@ -353,9 +369,23 @@ export default function EvaluatePage() {
         setSelectedProgram(null);
         setStep("program");
         break;
-      case "questions":
-        if (currentQuestionIndex > 0) {
-          setCurrentQuestionIndex(currentQuestionIndex - 1);
+      case "questions": {
+        // Go back, skipping hidden questions whose showIf condition is not met
+        const ansMap = new Map(answers.map((a) => [a.questionId, a.value]));
+        let prevIdx = currentQuestionIndex - 1;
+        while (prevIdx > 0) {
+          const prevQ = questions[prevIdx];
+          if (prevQ.showIf) {
+            const depAns = ansMap.get(prevQ.showIf.questionId);
+            if (depAns !== prevQ.showIf.value) {
+              prevIdx--;
+              continue;
+            }
+          }
+          break;
+        }
+        if (prevIdx >= 0 && currentQuestionIndex > 0) {
+          setCurrentQuestionIndex(prevIdx);
         } else if (availableCertTypes.length > 1) {
           // Go back to cert type selection
           setSelectedCertType(null);
@@ -366,6 +396,7 @@ export default function EvaluatePage() {
           setStep("program");
         }
         break;
+      }
       case "result":
         if (questions.length > 0) {
           const goBackTo =
@@ -516,6 +547,7 @@ export default function EvaluatePage() {
           currentIndex={currentQuestionIndex}
           loading={loading}
           onAnswer={handleAnswer}
+          answers={answers}
         />
       )}
       {step === "result" && result && (

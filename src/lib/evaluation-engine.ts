@@ -18,6 +18,8 @@ export interface EvaluationQuestion {
   positiveMessage?: string;
   /** Per-option effects for select questions */
   optionEffects?: Record<string, { effect: string; message: string | null }>;
+  /** Conditional display: only show if another question was answered with a specific value */
+  showIf?: { questionId: string; value: string };
 }
 
 export interface EvaluationAnswer {

@@ -8,11 +8,13 @@ export function QuestionWizard({
   currentIndex,
   loading,
   onAnswer,
+  answers = [],
 }: {
   questions: EvaluationQuestion[];
   currentIndex: number;
   loading: boolean;
   onAnswer: (value: string) => void;
+  answers?: { questionId: string; value: string }[];
 }) {
   const t = useTranslations();
 
@@ -26,21 +28,32 @@ export function QuestionWizard({
 
   const currentQ = questions[currentIndex];
 
+  // Count visible questions (exclude those whose showIf condition is not met)
+  const answerMap = new Map(answers.map((a) => [a.questionId, a.value]));
+  const visibleCount = questions.filter((q) => {
+    if (!q.showIf) return true;
+    return answerMap.get(q.showIf.questionId) === q.showIf.value;
+  }).length;
+  const visibleIndex = questions.slice(0, currentIndex + 1).filter((q) => {
+    if (!q.showIf) return true;
+    return answerMap.get(q.showIf.questionId) === q.showIf.value;
+  }).length;
+
   return (
     <div>
       <div className="mt-4">
         <div className="mb-6 flex items-center justify-between">
           <span className="text-sm text-slate-400">
             {t("evaluation.questionOf", {
-              current: currentIndex + 1,
-              total: questions.length,
+              current: visibleIndex,
+              total: visibleCount,
             })}
           </span>
           <div className="h-1.5 flex-1 mx-4 rounded-full bg-white/10 overflow-hidden">
             <div
               className="h-full rounded-full bg-blue-500 transition-all duration-300"
               style={{
-                width: `${((currentIndex + 1) / questions.length) * 100}%`,
+                width: `${(visibleIndex / visibleCount) * 100}%`,
               }}
             />
           </div>

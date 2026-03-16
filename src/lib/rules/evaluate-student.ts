@@ -165,17 +165,18 @@ export function buildQuestionsFromRules(
       case "language_cert": {
         const accepted = getAcceptedCerts(cfg);
         const lcBlocks = rule.effect === "blocks_admission";
+        const hasQId = `rule_${rule.id}_has`;
 
         // Q1: Has language cert?
         questions.push({
-          id: `rule_${rule.id}_has`,
+          id: hasQId,
           text: "هل لدى الطالب شهادة لغة إنجليزية؟",
           type: "yes_no",
           isBlocking: lcBlocks,
           sourceField: "rule_has_language_cert",
         });
 
-        // Q2: Select cert type + score (combined)
+        // Q2: Select cert type + score (only shown if Q1 answer is "yes")
         if (accepted.length > 0) {
           const certOptions: { label: string; value: string }[] = [];
           for (const c of accepted) {
@@ -194,6 +195,7 @@ export function buildQuestionsFromRules(
             type: "select",
             options: certOptions,
             sourceField: "rule_language_cert_type_score",
+            showIf: { questionId: hasQId, value: "yes" },
           });
         }
         break;
