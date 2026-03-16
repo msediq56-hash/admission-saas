@@ -12,6 +12,10 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
   }
 
+  if (name.trim().length < 2) {
+    return NextResponse.json({ error: "اسم البرنامج يجب أن يكون حرفين على الأقل" }, { status: 400 });
+  }
+
   const { data: program, error: progError } = await supabase
     .from("programs")
     .insert({

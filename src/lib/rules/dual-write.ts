@@ -60,6 +60,7 @@ export async function dualWriteRequirements(
     requires_language_cert: false,
     accepted_language_certs: null,
     language_cert_effect: null,
+    result_notes: null,
   };
 
   // Custom requirements to sync
@@ -106,14 +107,27 @@ export async function dualWriteRequirements(
             req.ielts_effect = eff === "blocks_admission" ? "blocks_if_below" : "conditional";
           }
         }
-        req.language_cert_effect = eff === "blocks_admission" ? "blocks_if_below" : "conditional";
+        if (eff === "blocks_admission") {
+          req.language_cert_effect = "blocks_if_below";
+        } else if (rule.effect_message?.includes("مقابلة")) {
+          req.language_cert_effect = `interview: ${rule.effect_message}`;
+        } else {
+          const lcMsg = rule.effect_message || "يحتاج شهادة لغة إنجليزية";
+          req.language_cert_effect = `conditional: ${lcMsg}`;
+        }
         break;
       }
 
       case "sat":
         req.requires_sat = true;
         req.sat_min = (cfg.min_score as number) ?? null;
-        req.sat_effect = eff === "blocks_admission" ? "blocks_if_below" : "conditional";
+        if (eff === "blocks_admission") {
+          req.sat_effect = "blocks_if_below";
+        } else {
+          // Include Arabic message in effect: "conditional: يحتاج SAT"
+          const satMsg = rule.effect_message || `يحتاج SAT بدرجة ${(cfg.min_score as number) ?? ""}+`;
+          req.sat_effect = `conditional: ${satMsg}`;
+        }
         break;
 
       case "gpa":

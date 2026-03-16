@@ -147,6 +147,10 @@ export async function PATCH(
 
   // ─── Update program info ───
   if (program) {
+    if (program.name !== undefined && program.name.trim().length < 2) {
+      return NextResponse.json({ error: "اسم البرنامج يجب أن يكون حرفين على الأقل" }, { status: 400 });
+    }
+
     const updates: Record<string, unknown> = {};
     if (program.name !== undefined) updates.name = program.name;
     if (program.category !== undefined) updates.category = program.category;

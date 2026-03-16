@@ -192,7 +192,7 @@ export function buildQuestionsFromRequirements(
 
   // 4. Language certificate (multi-cert) — falls back to IELTS-only
   if (req.requires_language_cert && req.accepted_language_certs?.length) {
-    // Step 4a: "Does the student have a language certificate?"
+    // Step 4a: "Does the student have an English language certificate?"
     questions.push({
       id: `q_${qIndex++}`,
       text: "هل لدى الطالب شهادة لغة إنجليزية؟",
@@ -201,25 +201,25 @@ export function buildQuestionsFromRequirements(
       sourceField: "has_language_cert",
     });
 
-    // Step 4b: "Which type?" (select from accepted certs)
+    // Step 4b: Combined cert type + score select
+    // Each cert gets two options: "meets min" and "below min"
+    const certOptions: { label: string; value: string }[] = [];
+    for (const c of req.accepted_language_certs) {
+      certOptions.push({
+        label: `${c.type} - ${c.min_score} أو أعلى`,
+        value: `${c.type}|meets`,
+      });
+      certOptions.push({
+        label: `${c.type} - أقل من ${c.min_score}`,
+        value: `${c.type}|below`,
+      });
+    }
     questions.push({
       id: `q_${qIndex++}`,
-      text: "ما نوع شهادة اللغة؟",
+      text: "اختر نوع الشهادة والدرجة",
       type: "select",
-      options: req.accepted_language_certs.map((c) => ({
-        label: `${c.type} (${c.min_score}+)`,
-        value: c.type,
-      })),
-      sourceField: "language_cert_type",
-    });
-
-    // Step 4c: "Does the score meet the minimum?"
-    questions.push({
-      id: `q_${qIndex++}`,
-      text: "هل الدرجة تحقق الحد الأدنى المطلوب؟",
-      type: "yes_no",
-      isBlocking: req.language_cert_effect === "blocks_if_below",
-      sourceField: "language_cert_meets_min",
+      options: certOptions,
+      sourceField: "language_cert_type_score",
     });
   } else if (req.requires_ielts) {
     // Fallback to legacy IELTS-only
@@ -522,12 +522,10 @@ export function evaluateAnswers(
           }
           break;
 
-        case "language_cert_type":
-          // Just records the type — no evaluation logic needed
-          break;
-
-        case "language_cert_meets_min":
-          if (answer === "no") {
+        case "language_cert_type_score": {
+          // Combined cert type + score: value is "TYPE|meets" or "TYPE|below"
+          const meetsMin = answer.endsWith("|meets");
+          if (!meetsMin) {
             const lcEffect2 = req.language_cert_effect || "blocks_if_below";
             if (lcEffect2 === "blocks_if_below") {
               negatives.push("الدرجة أقل من الحد الأدنى المطلوب");
@@ -549,6 +547,7 @@ export function evaluateAnswers(
             }
           }
           break;
+        }
 
         case "requires_ielts":
           if (answer === "no") {
@@ -581,19 +580,19 @@ export function evaluateAnswers(
         case "requires_sat":
           if (answer === "no") {
             const satEffect = req.sat_effect || "";
+            const defaultSatMsg = `يحتاج SAT بدرجة ${req.sat_min} أو أعلى`;
             if (satEffect === "blocks_if_below") {
-              negatives.push(
-                `يحتاج SAT بدرجة ${req.sat_min} أو أعلى`
-              );
+              negatives.push(defaultSatMsg);
             } else if (satEffect.startsWith("conditional")) {
+              const satMsg = satEffect.split(": ")[1];
               conditions.push({
                 category: "SAT",
-                description: satEffect.split(": ")[1] || satEffect,
+                description: satMsg || defaultSatMsg,
               });
             } else {
               conditions.push({
                 category: "SAT",
-                description: `يحتاج تقديم SAT بدرجة ${req.sat_min}+`,
+                description: defaultSatMsg,
               });
             }
           }

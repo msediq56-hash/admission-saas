@@ -97,15 +97,10 @@ export function evaluateProfileAgainstProgram(
   const isFoundation = entry.category === "foundation";
 
   // --- Certificate type filtering ---
-  // null slug = universal requirements (apply to all cert types)
+  // null slug = universal requirements (apply to all cert types) → evaluate for everyone
   // If slug is set, it must match the student's cert type
-  if (slug !== null) {
-    if (profile.certificateType === "arabic" && slug !== "arabic") {
-      return makeNegative(entry, "هذا المسار مخصص لحاملي شهادة أخرى");
-    }
-    if (profile.certificateType === "british" && slug !== "british") {
-      return makeNegative(entry, "هذا المسار مخصص لحاملي شهادة أخرى");
-    }
+  if (slug !== null && slug !== profile.certificateType) {
+    return makeNegative(entry, "هذا المسار مخصص لحاملي شهادة أخرى");
   }
 
   // --- A Level checks (field-driven from requirements) ---
@@ -144,9 +139,12 @@ export function evaluateProfileAgainstProgram(
     }
   }
 
-  // 1. High school
+  // 1. High school (skip for British cert programs — they use A Levels instead)
   if (req.requires_hs && !profile.hasHighSchool) {
-    negatives.push("لا يملك شهادة ثانوية");
+    const isBritishPath = profile.certificateType === "british" && slug === "british";
+    if (!isBritishPath) {
+      negatives.push("لا يملك شهادة ثانوية");
+    }
   }
 
   // 2. 12 years
@@ -245,15 +243,15 @@ export function evaluateProfileAgainstProgram(
   // 6. SAT
   if (req.requires_sat) {
     const satEffect = req.sat_effect || "";
+    const defaultSatMsg = `يحتاج SAT بدرجة ${req.sat_min} أو أعلى`;
     if (!profile.hasSAT || profile.satScore === null) {
       if (satEffect === "blocks_if_below") {
-        negatives.push(`يحتاج SAT بدرجة ${req.sat_min} أو أعلى`);
+        negatives.push(defaultSatMsg);
       } else {
-        conditions.push(
-          satEffect.startsWith("conditional")
-            ? satEffect.split(": ")[1] || satEffect
-            : `يحتاج تقديم SAT بدرجة ${req.sat_min}+`
-        );
+        const satMsg = satEffect.startsWith("conditional")
+          ? satEffect.split(": ")[1] || defaultSatMsg
+          : defaultSatMsg;
+        conditions.push(satMsg);
       }
     } else if (req.sat_min && profile.satScore < req.sat_min) {
       if (satEffect === "blocks_if_below") {
@@ -261,11 +259,10 @@ export function evaluateProfileAgainstProgram(
           `يحتاج SAT بدرجة ${req.sat_min} أو أعلى (الحالي: ${profile.satScore})`
         );
       } else {
-        conditions.push(
-          satEffect.startsWith("conditional")
-            ? satEffect.split(": ")[1] || satEffect
-            : `يحتاج تقديم SAT بدرجة ${req.sat_min}+`
-        );
+        const satMsg = satEffect.startsWith("conditional")
+          ? satEffect.split(": ")[1] || defaultSatMsg
+          : defaultSatMsg;
+        conditions.push(satMsg);
       }
     }
   }
