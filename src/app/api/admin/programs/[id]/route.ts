@@ -63,3 +63,38 @@ export async function DELETE(
 
   return NextResponse.json({ ok: true, university_id: program.university_id });
 }
+
+export async function PATCH(
+  request: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const { error, supabase } = await getAuthenticatedAdmin();
+  if (error) return error;
+
+  const { id: programId } = await params;
+  const body = await request.json();
+
+  // Only allow updating is_active
+  const updates: Record<string, unknown> = {};
+  if (typeof body.is_active === "boolean") {
+    updates.is_active = body.is_active;
+  }
+
+  if (Object.keys(updates).length === 0) {
+    return NextResponse.json({ error: "No valid fields" }, { status: 400 });
+  }
+
+  const { error: updateError } = await supabase
+    .from("programs")
+    .update(updates)
+    .eq("id", programId);
+
+  if (updateError) {
+    return NextResponse.json(
+      { error: updateError.message },
+      { status: 500 }
+    );
+  }
+
+  return NextResponse.json({ ok: true });
+}
