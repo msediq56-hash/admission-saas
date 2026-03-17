@@ -7,6 +7,7 @@ import { useAuth } from "@/lib/auth-context";
 import {
   isMedicalProgram,
   type ComparisonResult,
+  type StudentProfile,
 } from "@/lib/comparison-engine";
 import type {
   CustomRequirement,
@@ -14,20 +15,43 @@ import type {
 } from "@/lib/evaluation-engine";
 import type { RequirementRule } from "@/lib/rules/types";
 import {
-  compareAllProgramsWithRules,
+  compareProgramsRaw,
+  postProcessComparisonResults,
   type RuleProgramEntry,
 } from "@/lib/rules/compare-student";
+import { buildAssessmentProfile, type ComparisonFormData } from "@/lib/rules/v3/profile-adapter";
+import { analyzeV3EligibilityForEntry, compareOneProgram, type V3ComparisonEntry } from "@/lib/rules/v3/compare";
 import { ProfileForm, type ProfileFormResult, type DynamicField } from "./_components/profile-form";
 import { ResultsList } from "./_components/results-list";
 
 type FilterKey = "foundation" | "bachelor" | "master" | "phd" | "medical";
 
-// Hardcoded mapping: cert type → which form fields to show in the compare form
-// This is ONLY for the UI — the evaluation engine still uses all rules
+// Hardcoded mapping: cert type → which form fields to show for Arabic
+// British A Level fields now shown based on certificateType === "british" in profile-form.tsx
 const CERT_FORM_FIELDS: Record<string, Set<string>> = {
   arabic: new Set(["high_school", "twelve_years", "gpa", "language_cert", "sat"]),
-  british: new Set(["a_levels", "language_cert"]),
+  british: new Set(["language_cert"]),
 };
+
+/**
+ * Build old StudentProfile from ComparisonFormData (for fallback programs).
+ */
+function buildOldStudentProfile(formData: ComparisonFormData): StudentProfile {
+  return {
+    hasHighSchool: formData.hasHighSchool ?? true,
+    has12Years: formData.has12Years ?? true,
+    hasBachelor: false,
+    ielts: formData.hasIelts && formData.ieltsScore ? formData.ieltsScore : null,
+    hasSAT: formData.hasSAT ?? false,
+    satScore: formData.hasSAT && formData.satScore ? formData.satScore : null,
+    gpa: formData.gpa ?? null,
+    hasResearchPlan: false,
+    certificateType: formData.certificateType,
+    aLevelCount: formData.certificateType === "british" ? (formData.aLevelCount ?? null) : null,
+    aLevelCCount: formData.certificateType === "british" ? (formData.aLevelCCount ?? null) : null,
+    dynamicAnswers: formData.dynamicAnswers ?? {},
+  };
+}
 
 export default function ComparePage() {
   const t = useTranslations();
@@ -83,8 +107,12 @@ export default function ComparePage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user.tenantId]);
 
-  async function handleEvaluate({ profile, selectedCategories }: ProfileFormResult) {
+  async function handleEvaluate({ formData, selectedCategories }: ProfileFormResult) {
     setLoading(true);
+
+    // Build BOTH profiles from formData
+    const v3Profile = buildAssessmentProfile(formData);
+    const oldProfile = buildOldStudentProfile(formData);
 
     // Fetch all universities for tenant
     const { data: universities } = await supabase
@@ -193,7 +221,6 @@ export default function ComparePage() {
       );
 
       if (programRuleKeys.length === 0) {
-        // No rules at all — include as universal with empty rules
         entries.push({
           programId: p.id,
           programName: p.name,
@@ -209,7 +236,6 @@ export default function ComparePage() {
         continue;
       }
 
-      // Check if there are cert-specific rule rows
       const certSpecificKeys = programRuleKeys.filter(
         (k) => !k.endsWith("|null")
       );
@@ -217,24 +243,20 @@ export default function ComparePage() {
       const hasUniversalRules = rulesByKey.has(universalKey);
 
       if (certSpecificKeys.length > 0) {
-        // Program has cert-specific rules — create one entry per cert type
         for (const key of certSpecificKeys) {
           const certRules = rulesByKey.get(key) || [];
           const certSlug =
             (certRules[0]?.certificate_types as { slug: string } | null)
               ?.slug || null;
 
-          // Merge with universal rules
           const universalRules = rulesByKey.get(universalKey) || [];
           const allRules = [...universalRules, ...certRules];
 
-          // Get customs: cert-specific + universal
           const certCustoms = customsByProgramCert.get(key) || [];
           const universalCustoms =
             customsByProgramCert.get(universalKey) || [];
           const allCustoms = [...universalCustoms, ...certCustoms];
 
-          // Get tiers: cert-specific + universal
           const certTiers = tiersByProgramCert.get(key) || [];
           const universalTiers =
             tiersByProgramCert.get(universalKey) || [];
@@ -254,7 +276,6 @@ export default function ComparePage() {
           });
         }
       } else if (hasUniversalRules) {
-        // Only universal rules
         const rules = rulesByKey.get(universalKey) || [];
         const customs = customsByProgramCert.get(universalKey) || [];
         const tiers = tiersByProgramCert.get(universalKey) || [];
@@ -274,8 +295,44 @@ export default function ComparePage() {
       }
     }
 
-    // Evaluate ALL programs first (so cross-program suggestions work)
-    const allResults = compareAllProgramsWithRules(profile, entries);
+    // --- HYBRID ENGINE: Per-program V3/fallback routing ---
+    const v3Entries: Array<{ entry: RuleProgramEntry; parsedRules: import("@/lib/rules/v3/types").RequirementRuleV3[] }> = [];
+    const fallbackEntries: RuleProgramEntry[] = [];
+
+    for (const entry of entries) {
+      const eligibility = analyzeV3EligibilityForEntry(
+        entry.rules,
+        entry.certificateTypeSlug,
+        entry.customRequirements
+      );
+      if (eligibility.mode === "v3") {
+        v3Entries.push({ entry, parsedRules: eligibility.rules });
+      } else {
+        fallbackEntries.push(entry);
+      }
+    }
+
+    // Evaluate V3 programs
+    const v3Results: ComparisonResult[] = v3Entries.map(({ entry, parsedRules }) =>
+      compareOneProgram(v3Profile, {
+        programId: entry.programId,
+        programName: entry.programName,
+        universityName: entry.universityName,
+        country: entry.country,
+        universityType: entry.universityType,
+        category: entry.category,
+        certificateTypeSlug: entry.certificateTypeSlug,
+        rules: parsedRules,
+        scholarshipTiers: entry.scholarshipTiers,
+      })
+    );
+
+    // Evaluate fallback programs with OLD engine — RAW results only
+    const fallbackResults = compareProgramsRaw(oldProfile, fallbackEntries);
+
+    // Merge results and apply post-processing ONCE
+    const mergedResults = [...v3Results, ...fallbackResults];
+    const allResults = postProcessComparisonResults(mergedResults);
 
     // Filter results AFTER comparison based on selected categories
     const filtered = allResults.filter((r) => {

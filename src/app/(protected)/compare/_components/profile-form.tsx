@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useTranslations } from "next-intl";
-import type { StudentProfile } from "@/lib/comparison-engine";
+import type { ComparisonFormData } from "@/lib/rules/v3/profile-adapter";
 import { categoryColors } from "@/lib/ui-constants";
 
 type FilterKey = "foundation" | "bachelor" | "master" | "phd" | "medical";
@@ -15,7 +15,7 @@ export interface DynamicField {
 }
 
 export interface ProfileFormResult {
-  profile: StudentProfile;
+  formData: ComparisonFormData;
   selectedCategories: Record<FilterKey, boolean>;
 }
 
@@ -100,22 +100,21 @@ export function ProfileForm({
   }, []);
 
   function handleSubmit() {
-    const profile: StudentProfile = {
+    const formData: ComparisonFormData = {
+      certificateType,
       hasHighSchool,
       has12Years,
-      hasBachelor: false,
-      ielts: hasIelts ? ieltsScore : null,
-      hasSAT,
-      satScore: hasSAT ? satScore : null,
       gpa: hasGpa ? gpa : null,
-      hasResearchPlan: false,
-      certificateType,
-      aLevelCount: certificateType === "british" ? aLevelCount : null,
-      aLevelCCount: certificateType === "british" ? aLevelCCount : null,
+      aLevelCount: certificateType === "british" ? aLevelCount : undefined,
+      aLevelCCount: certificateType === "british" ? aLevelCCount : undefined,
+      hasIelts,
+      ieltsScore: hasIelts ? ieltsScore : undefined,
+      hasSAT,
+      satScore: hasSAT ? satScore : undefined,
       dynamicAnswers:
         Object.keys(dynamicAnswers).length > 0 ? dynamicAnswers : undefined,
     };
-    onSubmit({ profile, selectedCategories });
+    onSubmit({ formData, selectedCategories });
   }
 
   const filterKeys: FilterKey[] = [
@@ -178,8 +177,8 @@ export function ProfileForm({
           </button>
         </div>
 
-        {/* British A Level fields — show if a_levels rule exists */}
-        {has("a_levels") && (
+        {/* British A Level fields — show when British cert selected */}
+        {certificateType === "british" && (
           <div className="mt-4 space-y-4">
             <div>
               <label className="block text-sm font-medium text-slate-300 mb-2">

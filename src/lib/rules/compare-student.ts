@@ -637,14 +637,25 @@ function addCrossProgramSuggestions(results: ComparisonResult[]): void {
   }
 }
 
-export function compareAllProgramsWithRules(
+/**
+ * Evaluate all programs and return raw results WITHOUT post-processing.
+ * Use this when you need to merge with V3 results before applying
+ * cross-program suggestions and sorting.
+ */
+export function compareProgramsRaw(
   profile: StudentProfile,
   programs: RuleProgramEntry[]
 ): ComparisonResult[] {
-  const results = programs.map((entry) =>
-    evaluateProfileWithRules(profile, entry)
-  );
+  return programs.map((entry) => evaluateProfileWithRules(profile, entry));
+}
 
+/**
+ * Apply cross-program suggestions and sort results.
+ * Run this ONCE on the full merged list (V3 + fallback).
+ */
+export function postProcessComparisonResults(
+  results: ComparisonResult[]
+): ComparisonResult[] {
   addCrossProgramSuggestions(results);
 
   const order: Record<string, number> = {
@@ -655,4 +666,12 @@ export function compareAllProgramsWithRules(
   results.sort((a, b) => order[a.status] - order[b.status]);
 
   return results;
+}
+
+export function compareAllProgramsWithRules(
+  profile: StudentProfile,
+  programs: RuleProgramEntry[]
+): ComparisonResult[] {
+  const results = compareProgramsRaw(profile, programs);
+  return postProcessComparisonResults(results);
 }

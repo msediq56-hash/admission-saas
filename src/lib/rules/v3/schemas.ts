@@ -205,7 +205,7 @@ export const BritishAssessmentProfileSchema = z.object({
   intendedMajor: z.string().optional(),
   sat: SatFieldSchema,
   languageCert: LanguageCertFieldSchema,
-  dynamicAnswers: z.record(z.union([z.string(), z.boolean(), z.number()])).optional(),
+  dynamicAnswers: z.record(z.string(), z.union([z.string(), z.boolean(), z.number()])).optional(),
 });
 export type BritishAssessmentProfileZ = z.infer<
   typeof BritishAssessmentProfileSchema
@@ -220,7 +220,7 @@ export const ArabicAssessmentProfileSchema = z.object({
   intendedMajor: z.string().optional(),
   sat: SatFieldSchema,
   languageCert: LanguageCertFieldSchema,
-  dynamicAnswers: z.record(z.union([z.string(), z.boolean(), z.number()])).optional(),
+  dynamicAnswers: z.record(z.string(), z.union([z.string(), z.boolean(), z.number()])).optional(),
 });
 export type ArabicAssessmentProfileZ = z.infer<
   typeof ArabicAssessmentProfileSchema
@@ -231,7 +231,7 @@ export const MasterAssessmentProfileSchema = z.object({
   hasBachelor: z.union([z.boolean(), z.literal("unknown")]),
   hasResearchPlan: z.union([z.boolean(), z.literal("unknown")]),
   languageCert: LanguageCertFieldSchema,
-  dynamicAnswers: z.record(z.union([z.string(), z.boolean(), z.number()])).optional(),
+  dynamicAnswers: z.record(z.string(), z.union([z.string(), z.boolean(), z.number()])).optional(),
 });
 export type MasterAssessmentProfileZ = z.infer<
   typeof MasterAssessmentProfileSchema
