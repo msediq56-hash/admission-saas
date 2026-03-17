@@ -196,7 +196,10 @@ function buildOutcomes(
     case "british_qualifications":
       return {
         pass: { decision: "pass" },
-        count_fail: { decision: "block", message: effectMessage || "عدد مواد A Level غير كافٍ" },
+        count_fail: makeOutcome(
+          decision,
+          effectMessage || "عدد مواد A Level غير كافٍ"
+        ),
         grade_fail: makeOutcome(
           decision,
           effectMessage || "درجات A Level أقل من المطلوب"
