@@ -163,7 +163,7 @@ async function main() {
     .select(`
       id, name, category, is_active,
       university:universities!inner(id, name),
-      certificate_type:certificate_types(id, name, slug)
+      certificate_type:certificate_types(id, name_ar, slug)
     `)
     .eq("is_active", true)
     .order("name");
@@ -205,7 +205,7 @@ async function main() {
       programName: p.name,
       universityName: uni?.name || "Unknown",
       category: p.category,
-      certTypeName: cert?.name || null,
+      certTypeName: cert?.name_ar || null,
       certTypeSlug: cert?.slug || null,
       rules: rules as RuleRow[],
       customReqs: customReqs as CustomReqRow[],
