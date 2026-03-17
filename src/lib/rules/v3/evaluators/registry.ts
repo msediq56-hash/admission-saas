@@ -26,6 +26,7 @@ import { portfolioEvaluatorV3 } from "./portfolio";
 import { researchPlanEvaluatorV3 } from "./research-plan";
 import { studyTrackEvaluatorV3 } from "./study-track";
 import { britishQualificationsEvaluatorV3 } from "./british-qualifications";
+import { customYesNoEvaluatorV3 } from "./custom-yes-no";
 
 registerEvaluatorV3(highSchoolEvaluatorV3);
 registerEvaluatorV3(twelveYearsEvaluatorV3);
@@ -38,3 +39,4 @@ registerEvaluatorV3(portfolioEvaluatorV3);
 registerEvaluatorV3(researchPlanEvaluatorV3);
 registerEvaluatorV3(studyTrackEvaluatorV3);
 registerEvaluatorV3(britishQualificationsEvaluatorV3);
+registerEvaluatorV3(customYesNoEvaluatorV3);

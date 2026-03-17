@@ -210,6 +210,7 @@ export interface BritishAssessmentProfile {
   intendedMajor?: string;
   sat: SatField;
   languageCert: LanguageCertField;
+  dynamicAnswers?: Record<string, string | boolean | number>;
 }
 
 /** Arabic certificate profile. */
@@ -222,6 +223,7 @@ export interface ArabicAssessmentProfile {
   intendedMajor?: string;
   sat: SatField;
   languageCert: LanguageCertField;
+  dynamicAnswers?: Record<string, string | boolean | number>;
 }
 
 /** Master's / postgraduate profile. */
@@ -230,6 +232,7 @@ export interface MasterAssessmentProfile {
   hasBachelor: boolean | "unknown";
   hasResearchPlan: boolean | "unknown";
   languageCert: LanguageCertField;
+  dynamicAnswers?: Record<string, string | boolean | number>;
 }
 
 // -----------------------------------------------------------
